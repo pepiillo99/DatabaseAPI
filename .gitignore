@@ -1,0 +1,8 @@
+
+*.class
+*.prefs
+*.MF
+*.properties
+target/DatabaseAPI-1.0.jar
+.project
+.classpath
