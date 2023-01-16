@@ -4,7 +4,7 @@ This API is a help to create your database more easily and simply.
 First of all, it will be necessary to create the database configuration, this will be separated by two types, MySQL and SQLite.
 For the MySQL configuration we will use the following arguments in the DatabaseConfiguration constructor:
 
-**MySLQ**
+**MySQL**
 
 ```java
 DatabaseConfiguration(String ip, int port, String user, String password) { // mysql
@@ -78,4 +78,4 @@ Table types available for client/player
 
 - **PlayerDatabaseTable**: It is the parent class, it will need the PlayerData of the client/player to be able to load/generate the data. It has an *update* method to update the data in the table, to execute this method it has a cooldown of 10 seconds so as not to saturate the database, although we will have the option of setting update priority so that it is always updated when using the method. We should not worry about the loss of data, because when downloading the PlayerData it will be saved automatically if it is not updated. From this class we can generate new table types for client/player.
 - **SimplePlayerDatabaseTable**: As its name indicates it is simply the child of *PlayerDataDatabase*.
-- **MultiPlayerDatabaseTable**:
+- **MultiPlayerDatabaseTable**: It is used to store the same data but in different sections, for example to store the statistics of a player in various game modes.
