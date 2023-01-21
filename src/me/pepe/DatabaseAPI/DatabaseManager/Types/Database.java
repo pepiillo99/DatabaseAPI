@@ -774,7 +774,7 @@ public abstract class Database {
 		PreparedStatement preparedStatement = connection.prepareStatement(removeStatement);
 		return preparedStatement;
 	}
-	protected void saveInStatement(PreparedStatement statement, Object o, int statementSize) throws SQLException {
+	public void saveInStatement(PreparedStatement statement, Object o, int statementSize) throws SQLException {
 		String className = o.getClass().getSimpleName();
 		if (className.equals("Integer")) {
 			statement.setInt(statementSize, (Integer) o);

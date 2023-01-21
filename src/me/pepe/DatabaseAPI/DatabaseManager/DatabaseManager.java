@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -240,10 +239,6 @@ public class DatabaseManager {
 			callback.done(pData, null);
 		}
 	}
-	private void setIdentifierValues(Identifier identifier, String name, UUID uuid) {
-		identifier.setName(name);
-		identifier.setUUID(uuid);
-	}
 	public void loadPlayer(PlayerData pData, boolean async) {
 		loadPlayer(pData, async, null);
 	}
@@ -329,22 +324,6 @@ public class DatabaseManager {
 	public void unloadDatabases() throws SQLException {
 		for (Database dbs : databases.values()) {
 			dbs.closeConnection();
-		}
-	}
-	private void saveInStatement(PreparedStatement statement, Object o, int statementSize) throws SQLException {
-		String className = o.getClass().getSimpleName();
-		if (className.equals("Integer")) {
-			statement.setInt(statementSize, (Integer) o);
-		} else if (className.equals("Double")) {
-			statement.setDouble(statementSize, (Double) o);
-		} else if (className.equals("Long")) {
-			statement.setLong(statementSize, (Long) o);
-		} else if (className.equals("Boolean")) {
-			statement.setBoolean(statementSize, (Boolean) o);
-		} else if (className.equals("String")) {
-			statement.setString(statementSize, (String) o);
-		} else {
-			statement.setString(statementSize, o.toString());
 		}
 	}
 }

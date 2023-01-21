@@ -73,7 +73,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 				try {
 					String select = "SELECT * FROM " + getTableName() + " WHERE identifier = ?";
 					PreparedStatement statement = connection.prepareStatement(select);
-					saveInStatement(statement, keySerialize(), 1);
+					getDatabase().saveInStatement(statement, keySerialize(), 1);
 					ResultSet resultSet = statement.executeQuery();
 					while (resultSet.next()) {
 						String dataName = resultSet.getString("data_name");
@@ -147,10 +147,10 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 		insertStatement = insertStatement + ")";
 		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement);
 		int statementSize = 1;
-		saveInStatement(preparedStatement, keySerialize(), statementSize++);
-		saveInStatement(preparedStatement, dataName, statementSize++);
+		getDatabase().saveInStatement(preparedStatement, keySerialize(), statementSize++);
+		getDatabase().saveInStatement(preparedStatement, dataName, statementSize++);
 		for (Entry<String, Object> save : saveMap.entrySet()) {
-			saveInStatement(preparedStatement, save.getValue(), statementSize++);
+			getDatabase().saveInStatement(preparedStatement, save.getValue(), statementSize++);
 		}
 		return preparedStatement;
 	}
@@ -164,10 +164,10 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 		PreparedStatement statement = connection.prepareStatement(saveStatement);
 		int statementSize = 1;
 		for (Entry<String, Object> save : saveMap.entrySet()) {
-			saveInStatement(statement, save.getValue(), statementSize++);
+			getDatabase().saveInStatement(statement, save.getValue(), statementSize++);
 		}
-		saveInStatement(statement, keySerialize(), statementSize++);
-		saveInStatement(statement, dataName, statementSize++);
+		getDatabase().saveInStatement(statement, keySerialize(), statementSize++);
+		getDatabase().saveInStatement(statement, dataName, statementSize++);
 		return statement;
 	}
 	@Override
@@ -183,21 +183,5 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 		}
 		// UNUSED
 		return map;
-	}
-	protected void saveInStatement(PreparedStatement statement, Object o, int statementSize) throws SQLException {
-		String className = o.getClass().getSimpleName();
-		if (className.equals("Integer")) {
-			statement.setInt(statementSize, (Integer) o);
-		} else if (className.equals("Double")) {
-			statement.setDouble(statementSize, (Double) o);
-		} else if (className.equals("Long")) {
-			statement.setLong(statementSize, (Long) o);
-		} else if (className.equals("Boolean")) {
-			statement.setBoolean(statementSize, (Boolean) o);
-		} else if (className.equals("String")) {
-			statement.setString(statementSize, (String) o);
-		} else {
-			statement.setString(statementSize, o.toString());
-		}
 	}
 }

@@ -72,6 +72,59 @@ Once here it is important to know the types of tables.
 - **DatabaseTable**: It is the parent class, from which we can create the different types of tables. It is a basic table with its key and its attributes, to get a tuple we will use its key.
 - **TableDatabaseMultiKeys**: It extends from TableDatabase, it refers to its name, all the attributes can be used as "key", but it was really created thinking that its key was a number and that this auto incremented automatically as tuples are added. When trying to search for data in said table, it can return several tuples depending on the search method we use.
 
+To make a good example of this type of table, we are going to save the contacts of a contact book, saving only the phone number and the name of the contact...
+
+```java
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+
+import me.pepe.DatabaseAPI.DatabaseManager.DatabaseKeyType;
+import me.pepe.DatabaseAPI.DatabaseManager.Databases.ServerDataDatabase;
+import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
+import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
+
+public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on extends you need indicate which database you will use
+    private int number; // key...
+    private String name;
+    public ContactsTable(Database database) {
+        // (tableName, keyName, DatabaseType, database)
+        super("ContactsTable", "number", DatabaseKeyType.INT, database);
+    }
+    @Override
+    public Object keySerialize() { // you can change Object to Integer...
+        return number;
+    }
+    @Override
+    public HashMap<String, Object> serialize(HashMap<String, Object> map) {
+        // As the telephone number is the key to the table, it will not be necessary to save it. (supposedly this will never change)
+        map.put("name", name);
+        return map;
+    }
+    @Override
+    public void deserialize(ResultSet result) throws SQLException {
+        this.number = result.getInt("number"); // Differentiating from serialize, here it is necessary to store the number
+        this.name = result.getString("name"); // we collect the name of the result and define it in our variable
+    }
+    @Override
+    public void onLoad(boolean hasData) {
+        System.out.println("Table " + getTableName() + " loaded hasData: " + hasData);
+    }
+    public int getNumber() {
+        return number;
+    }
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+        setSaved(false); // we define as the table is not saved
+        save(true); // we save the table asynchromatically, in the case of not doing so (false) for the process to continue, you must wait for the database to be saved.
+    }
+}
+```
+
+
 ***(For client/player system)**
 
 Table types available for client/player
