@@ -123,6 +123,93 @@ public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on ext
     }
 }
 ```
+And this code its for TableDatabaseMultiKeys:
+
+```java
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+
+import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
+import me.pepe.DatabaseAPI.DatabaseManager.Types.TableDatabaseMultiKeys;
+
+public class ContactsTableMultiKeys extends TableDatabaseMultiKeys<ServerDataDatabase> { // on extends you need indicate which database you will use
+    private int id;
+    private int number;
+    private String name;
+    public ContactsTableMultiKeys(Database database) {
+        super("ContactsMulti", "id", database);
+        // Here the key is the id, by default extending from TableDatabaseMultiKeys you will know that it is a DatabaseKeyType.INT.
+        setAutoIncrement(true); // We define the table to auto-increment automatically.
+    }
+    @Override
+    public void buildKey(Integer key) {
+        this.id = key;
+    }
+    @Override
+    protected void buildDatabase(ResultSet result) throws SQLException { // this you need define key (this method not call buildKey)
+        this.id = result.getInt("id");
+        this.number = result.getInt("number");
+        this.name = result.getString("name");
+    }
+    @Override
+    public Integer keySerialize() { // i change Object to Integer
+        return id;
+    }
+    @Override
+    public HashMap<String, Object> serialize(HashMap mapp) { // here does not let you use the <String, Object> (although it is) I am working to fix this
+        HashMap<String, Object> map = mapp; // temporaly fix
+        map.put("number", number);
+        map.put("name", name);
+        return map;
+    }
+    @Override
+    public void deserialize(ResultSet result) throws SQLException {
+        this.number = result.getInt("number");
+        this.name = result.getString("name");
+    }
+    public int getID() {
+        return id;
+    }
+    public int getNumber() {
+        return number;
+    }
+    public void setNumber(int number) {
+        this.number = number;
+        setSaved(false); // we define as the table is not saved
+        save(true); // we save the table asynchromatically, in the case of not doing so (false) for the process to continue, you must wait for the database to be saved.
+    }
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+        setSaved(false); // we define as the table is not saved
+        save(true); // we save the table asynchromatically, in the case of not doing so (false) for the process to continue, you must wait for the database to be saved.
+    }
+}
+```
+
+Here we have the example of the database using the DatabaseTable, when using it in this way our database will look like this:
+```
++-----------+-------+
+| number    | name  |
++-----------+-------+
+| 666666666 | pepe  |
+| 777777777 | maria |
+| 888888888 | ana   |
++-----------+-------+
+```
+And this is the difference when using DatabaseTableMultiKeys:
+```
++----+-----------+-------+
+| id | number    | name  |
+|----+-----------+-------+
+| 1  | 666666666 | pepe  |
+| 2  | 777777777 | maria |
+| 3  | 888888888 | ana   |
++----+-----------+-------+
+```
 
 
 ***(For client/player system)**
