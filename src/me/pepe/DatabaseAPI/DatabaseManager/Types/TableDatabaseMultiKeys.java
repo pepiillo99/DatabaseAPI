@@ -7,7 +7,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.DatabaseKeyType;
 import me.pepe.DatabaseAPI.DatabaseManager.Databases.ServerDataDatabase;
 import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 
-public abstract class TableDatabaseMultiKeys extends DatabaseTable<ServerDataDatabase> {
+public abstract class TableDatabaseMultiKeys extends DatabaseTable {
 	public TableDatabaseMultiKeys(String name, String keyName, Database database) {
 		super(name, keyName, DatabaseKeyType.INT, database);
 		hasData = true;
