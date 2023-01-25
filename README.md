@@ -85,11 +85,12 @@ import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 
 public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on extends you need indicate which database you will use
-    private int number; // key...
-    private String name;
-    public ContactsTable(Database database) {
+    private int number = 0; // key...
+    private String name = ""; // is important define default values...
+    public ContactsTable(int number, Database database) {
         // (tableName, keyName, DatabaseType, database)
         super("ContactsTable", "number", DatabaseKeyType.INT, database);
+        this.number = number;
     }
     @Override
     public Object keySerialize() { // you can change Object to Integer...
@@ -133,14 +134,15 @@ import java.util.HashMap;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.TableDatabaseMultiKeys;
 
-public class ContactsTableMultiKeys extends TableDatabaseMultiKeys<ServerDataDatabase> { // on extends you need indicate which database you will use
-    private int id;
-    private int number;
-    private String name;
-    public ContactsTableMultiKeys(Database database) {
+public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // there not necesary indicate which database you will use
+    private int id = 0; // is important define default values...
+    private int number = 0;
+    private String name = "";
+    public ContactsTableMultiKeys(int id, Database database) {
         super("ContactsMulti", "id", database);
         // Here the key is the id, by default extending from TableDatabaseMultiKeys you will know that it is a DatabaseKeyType.INT.
         setAutoIncrement(true); // We define the table to auto-increment automatically.
+        this.id = id;
     }
     @Override
     public void buildKey(Integer key) {
@@ -211,8 +213,31 @@ And this is the difference when using DatabaseTableMultiKeys:
 +----+-----------+-------+
 ```
 
+Now we know how to create our table and we know how it will be reflected in our database, it is time to register it in the API. Now we know how to create our table and we know how it will be reflected in our database, it is time to register it in the API. To do this we must access the DatabaseManager which we have in the API instance, we previously saved it with the variable named `databaseAPI`
 
-***(For client/player system)**
+As we mentioned before we will register the tables in the following way:
+
+```java
+DatabaseManager dbManager = databaseAPI.getDatabaseManager();
+Database svDB = dbManager.getDatabase(ServerDataDatabase.class);
+svDB.registerTable(databaseAPI, ContactsTable.class, new DatabaseTableInstance<Integer>() {
+    @Override
+    public DatabaseTable<ServerDataDatabase> newInstance(Integer key) {
+        return new ContactsTable(key == null ? 0 : key, svDB); // the key to this table is a phone number, It can be null so in that case we will have to return default key (0)
+    }       
+});
+svDB.registerTable(databaseAPI, ContactsTableMultiKeys.class, new DatabaseTableInstance<Integer>() {
+    @Override
+    public DatabaseTable<ServerDataDatabase> newInstance(Integer key) {
+        return new ContactsTableMultiKeys(key == null ? 0 : key, svDB); // the key to this table is a phone number, It can be null so in that case we will have to return default key (0)
+    }       
+});
+```
+
+When we have passed this step, we will be able to use our database correctly, in fact we can execute this code and we will see that both the databases and the tables have been created. To continue, we are going to start by entering data into it.
+
+
+## *(For client/player system)
 
 Table types available for client/player
 

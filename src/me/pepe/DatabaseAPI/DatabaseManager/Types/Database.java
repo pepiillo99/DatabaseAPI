@@ -671,10 +671,23 @@ public abstract class Database {
 			}
 		});
 	}
-	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> clase, DatabaseTableInstance dbInstance) {
-		registerTable(instance, clase, dbInstance, true);
+	/**
+	 * This method is used to register the tables in the API so that they can be used later.
+	 * @param instance - DatabaseAPI instance
+	 * @param clase - Table class object
+	 * @param tableInstance - Database table instance creator
+	 */
+	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance) {
+		registerTable(instance, tableClass, tableInstance, true);
 	}
-	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> clase, DatabaseTableInstance tableInstance, boolean saveDatabase) {
+	/**
+	 * This method is used to register the tables in the API so that they can be used later.
+	 * @param instance - DatabaseAPI instance
+	 * @param clase - Table class object
+	 * @param tableInstance - Database table instance creator
+	 * @param saveDatabase - if you like save this table (update/insert)
+	 */
+	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance, boolean saveDatabase) {
 		DatabaseTable table = tableInstance.newInstance(null);
 		if (!saveDatabase) {
 			noSaveTable.add(table.getTableName());
@@ -692,7 +705,7 @@ public abstract class Database {
 					PreparedStatement statement = connection.prepareStatement(createTableStatement);
 					instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 					statement.executeUpdate();
-					tableInstances.put(clase, tableInstance);
+					tableInstances.put(tableClass, tableInstance);
 					instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
 				} catch(SQLException ex) {
 					ex.printStackTrace();
