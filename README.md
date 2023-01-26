@@ -213,7 +213,7 @@ And this is the difference when using DatabaseTableMultiKeys:
 +----+-----------+-------+
 ```
 
-Now we know how to create our table and we know how it will be reflected in our database, it is time to register it in the API. Now we know how to create our table and we know how it will be reflected in our database, it is time to register it in the API. To do this we must access the DatabaseManager which we have in the API instance, we previously saved it with the variable named `databaseAPI`
+Now we know how to create our table and we know how it will be reflected in our database, it is time to register it in the API. To do this we must access the DatabaseManager which we have in the API instance, we previously saved it with the variable named `databaseAPI`
 
 As we mentioned before we will register the tables in the following way:
 
