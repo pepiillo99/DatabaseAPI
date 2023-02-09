@@ -312,12 +312,12 @@ public class DatabaseManager {
 			if (!db.exists()) {
 				try {
 					db.createNewFile();
-					System.out.println(db.getPath() + " created!");
+					System.out.println(db.getAbsolutePath() + " created!");
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
 			} else {
-				System.out.println(db.getPath() + " loaded!");
+				System.out.println(db.getAbsolutePath() + " loaded!");
 			}
 		}
 	}
