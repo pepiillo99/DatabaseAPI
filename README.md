@@ -104,7 +104,7 @@ public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on ext
     }
     @Override
     public void deserialize(ResultSet result) throws SQLException {
-        this.number = result.getInt("number"); // Differentiating from serialize, here it is necessary to store the number
+        // No need to enter primary key
         this.name = result.getString("name"); // we collect the name of the result and define it in our variable
     }
     @Override
