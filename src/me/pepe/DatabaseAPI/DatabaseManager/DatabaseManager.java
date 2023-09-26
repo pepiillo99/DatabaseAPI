@@ -58,8 +58,19 @@ public class DatabaseManager {
 			return null;
 		}
 	}
+	public PlayerData getPlayerDatabase(int identifier) {
+		for (PlayerData pData : playerDatabases.values()) {
+			if (pData.getIdentifier().getID() == identifier) {
+				return pData;
+			}
+		}
+		return null;
+	}
 	public boolean isPlayerLoaded(UUID uuid) {
 		return playerDatabases.containsKey(uuid);
+	}
+	public boolean isPlayerLoaded(int identifier) {
+		return getPlayerDatabase(identifier) != null;
 	}
 	public void getIdentifier(UUID uuid, String name, Callback<Identifier> callback, Callback<String> notFindedCallback, boolean async) { // Este metodo si no esta en la database no dejaría entrar al jugador en el aysncplayerloginevent
 		HashMap<String, Object> keys = new HashMap<String, Object>();
