@@ -4,7 +4,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map.Entry;
 
 import me.pepe.DatabaseAPI.DatabaseAPI;
@@ -15,12 +17,22 @@ import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.PlayerDatabaseTable;
 import me.pepe.DatabaseAPI.Utils.Callback;
 
 public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTableEntry> extends PlayerDatabaseTable<MultiPlayerDatabaseTable> {
+	private List<String> onlyLoad = new ArrayList<String>();
 	private final HashMap<String, V> datas = new HashMap<String, V>();
 	public MultiPlayerDatabaseTable(String name, PlayerData pData, Database database) {
 		super(name, pData, database);
 	}
 	public HashMap<String, V> getDatas() {
 		return datas;
+	}
+	public List<String> getOnlyLoad() {
+		return onlyLoad;
+	}
+	public void addOnlyLoad(String ol) {
+		onlyLoad.add(ol);
+	}
+	public void removeOnlyLoad(String ol) {
+		onlyLoad.remove(ol);
 	}
 	protected abstract HashMap<String, Object> serializeMulti(HashMap<String, Object> map, V data);
 	public abstract V deserializeMulti(String dataName, ResultSet result) throws SQLException;
@@ -72,6 +84,19 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 			public void done(Connection connection, Exception exception) {
 				try {
 					String select = "SELECT * FROM " + getTableName() + " WHERE identifier = ?";
+					if (!onlyLoad.isEmpty()) {
+						select += "AND (";
+						for (int i = 0; i < onlyLoad.size(); i++) {
+							String ol = onlyLoad.get(i);
+							if (i == 0) {
+								select += "data_name = '" + ol + "'";
+							} else {
+								select += "OR data_name = '" + ol + "'";
+							}
+						}
+						select += ")";
+					}
+					System.out.println(select);
 					PreparedStatement statement = connection.prepareStatement(select);
 					getDatabase().saveInStatement(statement, keySerialize(), 1);
 					ResultSet resultSet = statement.executeQuery();
