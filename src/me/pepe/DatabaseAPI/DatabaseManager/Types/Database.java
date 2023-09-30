@@ -689,29 +689,42 @@ public abstract class Database {
 	 */
 	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance, boolean saveDatabase) {
 		DatabaseTable table = tableInstance.newInstance(null);
-		if (!saveDatabase) {
-			noSaveTable.add(table.getTableName());
-		}
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (!isSQLite() && table.isAutoIncrement() ? " AUTO_INCREMENT PRIMARY KEY" : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
-					HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
-					for (Entry<String, Object> save : saveMap.entrySet()) {
-						createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
+		if (tableInstances.containsKey(tableClass)) {
+			instance.log("Database", "&cLa tabla " + table.getTableName() + " ya estaba registrada...");
+		} else {
+			if (!saveDatabase) {
+				noSaveTable.add(table.getTableName());
+			}
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (!isSQLite() && table.isAutoIncrement() ? " AUTO_INCREMENT PRIMARY KEY" : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
+						HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
+						for (Entry<String, Object> save : saveMap.entrySet()) {
+							createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
+						}
+						createTableStatement = createTableStatement + ");";
+						PreparedStatement statement = connection.prepareStatement(createTableStatement);
+						instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
+						statement.executeUpdate();
+						tableInstances.put(tableClass, tableInstance);
+						instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
+					} catch(SQLException ex) {
+						ex.printStackTrace();
 					}
-					createTableStatement = createTableStatement + ");";
-					PreparedStatement statement = connection.prepareStatement(createTableStatement);
-					instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
-					statement.executeUpdate();
-					tableInstances.put(tableClass, tableInstance);
-					instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
-				} catch(SQLException ex) {
-					ex.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		}
+	}
+	public void editTableInstance(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance) {
+		DatabaseTable table = tableInstance.newInstance(null);
+		if (tableInstances.containsKey(tableClass)) {
+			tableInstances.put(tableClass, tableInstance);
+			instance.log("Database", "&aLa instancia de la tabla " + table.getTableName() + " ha sido modificada correctamente");
+		} else {
+			instance.log("Database", "&cLa tabla " + table.getTableName() + " no se puede editar porque no estaba registrada...");
+		}
 	}
 	private PreparedStatement insert(Connection connection, DatabaseTable table) throws SQLException {
 		String insertStatement = "INSERT INTO " + table.getTableName() + " (" + table.getKeyName();
