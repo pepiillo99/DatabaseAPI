@@ -85,7 +85,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 				try {
 					String select = "SELECT * FROM " + getTableName() + " WHERE identifier = ?";
 					if (!onlyLoad.isEmpty()) {
-						select += "AND (";
+						select += " AND (";
 						for (int i = 0; i < onlyLoad.size(); i++) {
 							String ol = onlyLoad.get(i);
 							if (i == 0) {
