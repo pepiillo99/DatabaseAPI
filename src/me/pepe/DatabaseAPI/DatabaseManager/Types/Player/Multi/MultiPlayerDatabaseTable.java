@@ -91,7 +91,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 							if (i == 0) {
 								select += "data_name = '" + ol + "'";
 							} else {
-								select += "OR data_name = '" + ol + "'";
+								select += " OR data_name = '" + ol + "'";
 							}
 						}
 						select += ")";
