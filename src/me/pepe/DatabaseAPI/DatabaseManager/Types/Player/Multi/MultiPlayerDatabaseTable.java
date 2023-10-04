@@ -96,7 +96,6 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 						}
 						select += ")";
 					}
-					System.out.println(select);
 					PreparedStatement statement = connection.prepareStatement(select);
 					getDatabase().saveInStatement(statement, keySerialize(), 1);
 					ResultSet resultSet = statement.executeQuery();
