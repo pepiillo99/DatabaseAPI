@@ -22,6 +22,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Identifier.Identifier;
 import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.PlayerDatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Multi.MultiPlayerDatabaseTable;
+import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Simple.SimplePlayerDatabaseTable;
 import me.pepe.DatabaseAPI.Utils.Callback;
 import me.pepe.DatabaseAPI.Utils.DatabaseConfiguration;
 import me.pepe.DatabaseAPI.Utils.MySQLConnection;
@@ -589,7 +590,9 @@ public abstract class Database {
 						}
 						table.setLoaded();
 						if (!table.hasData()) {
-							table.setSaved(false);
+							if (!(table instanceof SimplePlayerDatabaseTable)) {
+								table.setSaved(false);
+							}
 						}
 						table.onLoad(table.hasData());
 						resultSet.close();
@@ -612,7 +615,7 @@ public abstract class Database {
 		}
 	}
 	public void save(boolean async, DatabaseTable table) {
-		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && (!table.isSaved() || !table.hasData())) {
+		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved()) {
 			if (async) {
 				queue.submit(new Runnable() {
 					@Override
