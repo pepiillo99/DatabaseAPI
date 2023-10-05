@@ -830,7 +830,7 @@ public abstract class Database {
 			return "TEXT";
 		}
 	}
-	public <DatabaseManager> void closeConnection() throws SQLException {
+	public void closeConnection() throws SQLException {
 		if (sqlConnection != null) {
 			sqlConnection.close();
 		} else {

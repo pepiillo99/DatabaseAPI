@@ -24,7 +24,7 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 	public long getLastUpdate() {
 		return lastUpdate;
 	}
-	public <MultiDatabase, MultiDatabaseEntry> void update(boolean priority, String dataName) {
+	public void update(boolean priority, String dataName) {
 		if (this instanceof MultiPlayerDatabaseTable) {
 			MultiPlayerDatabaseTable multidb = (MultiPlayerDatabaseTable) this;
 			if (multidb.hasData(dataName)) {
@@ -42,15 +42,13 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 			}
 		}
 	}
-	protected <SimplePlayerdDatabase> void update(boolean priority) {
+	protected void update(boolean priority) {
 		if (this instanceof SimplePlayerDatabaseTable) {
 			setSaved(false);
 			if (priority) {
-				setSaved(false);
 				getDatabase().save(true, this);
 			} else {
 				if ((lastUpdate + 10000) - System.currentTimeMillis() <= 0) {
-					setSaved(false);
 					getDatabase().save(true, this);
 				}
 			}
