@@ -252,13 +252,13 @@ public abstract class Database {
 								callback.done(table, null);
 							}
 						} catch (Exception e) {
-							DatabaseAPI.getInstance().log("Database", "Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
+							System.err.println("[Database]: Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
 							String errorMessage;
 							errorMessage = e + "\n";
 							for (StackTraceElement stack : e.getStackTrace()) {
 								errorMessage = errorMessage + "        at " + stack.getClassName() + "." + stack.getMethodName() + " (" + stack.getFileName() + ":" + stack.getLineNumber() + ")\n";
 							}
-							DatabaseAPI.getInstance().log("Error", errorMessage);
+							System.err.println("Error: " + errorMessage);
 							callback.done(table, e);
 						}
 					}				
@@ -398,13 +398,13 @@ public abstract class Database {
 						}
 					});
 				} else {
-					DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
+					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
 				}
 			} else {
-				DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
+				System.err.println("[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
 			}
 		} else {
-			System.out.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred");
 		}
 	}
 	public void getTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
@@ -470,13 +470,13 @@ public abstract class Database {
 						}							
 					});
 				} else {
-					DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
+					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
 				}
 			} else {
-				DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
+				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
 			}
 		} else {
-			System.out.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred");
 		}
 	}
 	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
@@ -534,13 +534,13 @@ public abstract class Database {
 						}							
 					});
 				} else {
-					DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
+					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
 				}
 			} else {
-				DatabaseAPI.getInstance().log("TableDatabaseMultiKey", "La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
+				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
 			}
 		} else {
-			System.out.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred");
 		}
 	}
 	public void load(boolean async, DatabaseTable table) {
@@ -601,13 +601,13 @@ public abstract class Database {
 							callback.done(table, null);
 						}
 					} catch (Exception e) {
-						DatabaseAPI.getInstance().log("Database", "Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
+						System.err.println("[Database]: Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
 						String errorMessage;
 						errorMessage = e + "\n";
 						for (StackTraceElement stack : e.getStackTrace()) {
 							errorMessage = errorMessage + "        at " + stack.getClassName() + "." + stack.getMethodName() + " (" + stack.getFileName() + ":" + stack.getLineNumber() + ")\n";
 						}
-						DatabaseAPI.getInstance().log("Error", errorMessage);
+						System.err.println("Error: " + errorMessage);
 						callback.done(table, e);
 					}
 				}				
@@ -693,7 +693,7 @@ public abstract class Database {
 	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance, boolean saveDatabase) {
 		DatabaseTable table = tableInstance.newInstance(null);
 		if (tableInstances.containsKey(tableClass)) {
-			instance.log("Database", "&cLa tabla " + table.getTableName() + " ya estaba registrada...");
+			System.err.println("[Database]: &cLa tabla " + table.getTableName() + " ya estaba registrada...");
 		} else {
 			if (!saveDatabase) {
 				noSaveTable.add(table.getTableName());
@@ -709,10 +709,10 @@ public abstract class Database {
 						}
 						createTableStatement = createTableStatement + ");";
 						PreparedStatement statement = connection.prepareStatement(createTableStatement);
-						instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
+						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 						statement.executeUpdate();
 						tableInstances.put(tableClass, tableInstance);
-						instance.log("Database", "&aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
+						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
 					} catch(SQLException ex) {
 						ex.printStackTrace();
 					}
@@ -724,9 +724,9 @@ public abstract class Database {
 		DatabaseTable table = tableInstance.newInstance(null);
 		if (tableInstances.containsKey(tableClass)) {
 			tableInstances.put(tableClass, tableInstance);
-			instance.log("Database", "&aLa instancia de la tabla " + table.getTableName() + " ha sido modificada correctamente");
+			System.out.println("[Database]: &aLa instancia de la tabla " + table.getTableName() + " ha sido modificada correctamente");
 		} else {
-			instance.log("Database", "&cLa tabla " + table.getTableName() + " no se puede editar porque no estaba registrada...");
+			System.out.println("[Database]: &cLa tabla " + table.getTableName() + " no se puede editar porque no estaba registrada...");
 		}
 	}
 	private PreparedStatement insert(Connection connection, DatabaseTable table) throws SQLException {

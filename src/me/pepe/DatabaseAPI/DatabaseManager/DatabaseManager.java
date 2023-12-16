@@ -30,12 +30,14 @@ public class DatabaseManager {
 	private DatabaseAPI instance;
 	private HashMap<UUID, PlayerData> playerDatabases = new HashMap<UUID, PlayerData>();
 	private HashMap<Class<? extends Database>, Database> databases = new HashMap<Class<? extends Database>, Database>();
+	private HashMap<String, Database> temporalyDatabases = new HashMap<String, Database>();
 	private Connection mainConnection;
 	private ExecutorService loadQueue = Executors.newSingleThreadExecutor();
 	private List<String> noSaveDatabase = new ArrayList<String>();
 	public DatabaseManager(DatabaseAPI instance) {
 		this.instance = instance;
 		new File(instance.getConfiguration().getDataFolder(), "Databases").mkdir();
+		new File(instance.getConfiguration().getDataFolder(), "Databases/Temp").mkdir();
 		if (!instance.getConfiguration().isSQL()) {
 			try {
 				Class.forName("org.mariadb.jdbc.Driver");
@@ -150,7 +152,7 @@ public class DatabaseManager {
 			loadPlayer(pData, async, callback);
 		} else {
 			if (playerDatabases.containsKey(identifier.getUUID())) {
-				instance.log("Databases", "&cLa data de " + pData.getIdentifier().getName() + " ya está cargada");
+				System.out.println("[Database]: &cLa data de " + pData.getIdentifier().getName() + " ya está cargada");
 				pData.setError(new DatabaseAlreadyLoadedException());
 				if (callback != null) {
 					callback.done(pData, null);
@@ -179,7 +181,7 @@ public class DatabaseManager {
 							@Override
 							public void done(String result, Exception exception) {
 								if (DatabaseAPI.getInstance().getConfiguration().canGenerateIdentifiers()) {
-									instance.log("Identifier", "Jugador no encontrado, generando...");
+									System.out.println("[Identifier]: Jugador no encontrado, generando...");
 									getDatabase(PlayerDataDatabase.class).getTable(Identifier.class, -0, new Callback<DatabaseTable>() {
 										@Override
 										public void done(DatabaseTable result, Exception ex) {
@@ -188,7 +190,7 @@ public class DatabaseManager {
 											identifier.setUUID(uuid);
 											identifier.setSaved(false);
 											identifier.save(false);
-											instance.log("Identifier", "Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
+											System.out.println("[Identifier]: Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
 											PlayerData pData = new PlayerData(identifier);
 											playerDatabases.put(uuid, pData);
 											loadPlayer(pData, false, callback);
@@ -220,7 +222,7 @@ public class DatabaseManager {
 							@Override
 							public void done(String result, Exception exception) {
 								if (DatabaseAPI.getInstance().getConfiguration().canGenerateIdentifiers()) {
-									instance.log("Identifier", "Jugador no encontrado, generando...");
+									System.out.println("[Identifier]: Jugador no encontrado, generando...");
 									getDatabase(PlayerDataDatabase.class).getTable(Identifier.class, -0, new Callback<DatabaseTable>() {
 										@Override
 										public void done(DatabaseTable result, Exception ex) {
@@ -228,7 +230,7 @@ public class DatabaseManager {
 											identifier.setName(name);
 											identifier.setUUID(uuid);
 											identifier.save(false);
-											instance.log("Identifier", "Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
+											System.out.println("[Identifier]: Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
 											PlayerData pData = new PlayerData(identifier);
 											playerDatabases.put(uuid, pData);
 											loadPlayer(pData, false, callback);
@@ -244,7 +246,7 @@ public class DatabaseManager {
 				});
 			}
 		} else {
-			instance.log("Databases", "&cEl jugador " + name + " ya estaba cargado");
+			System.err.println("[Databases]: &cEl jugador " + name + " ya estaba cargado");
 			PlayerData pData = playerDatabases.get(uuid);
 			pData.setError(new DatabaseAlreadyLoadedException());
 			callback.done(pData, null);
@@ -279,7 +281,7 @@ public class DatabaseManager {
 				}
 			}
 		} else {
-			instance.log("Databases", "&cLa data de " + pData.getIdentifier().getName() + " ya esta cargada");
+			System.err.println("[Databases]: &cLa data de " + pData.getIdentifier().getName() + " ya esta cargada");
 		}
 	}
 	public void unloadPlayer(UUID uuid, boolean async, boolean kick) {
@@ -303,7 +305,12 @@ public class DatabaseManager {
 			createDatabase(database);
 			databases.put(database.getClass(), database);
 		} else {
-			instance.log("DatabaseManager", "La base de dator que se ha intentado registrar ya estaba registrada '" + database.getClass().getSimpleName() + "'");
+			System.err.println("[DatabaseManager]: La base de datos que se ha intentado registrar ya estaba registrada '" + database.getClass().getSimpleName() + "'");
+		}
+	}
+	public void unregisterDatabase(Database database) {
+		if (databases.containsKey(database.getClass())) {
+			databases.remove(database.getClass());
 		}
 	}
 	protected void createDatabase(Database database) {
@@ -330,6 +337,47 @@ public class DatabaseManager {
 			} else {
 				System.out.println(db.getAbsolutePath() + " loaded!");
 			}
+		}
+	}
+	protected void createTemporalyDatabase(Database database) {
+		if (database.isObligatorySQLite()) {
+			DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
+			File db = new File(config.getDataFolder(), "Databases/Temp/" + database.getDatabaseName() + ".db");
+			if (!db.exists()) {
+				try {
+					db.createNewFile();
+					System.out.println(db.getAbsolutePath() + " created!");
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			} else {
+				System.err.println(db.getAbsolutePath() + " already exist, temporaly db cant reload!");
+			}
+		} else {
+			System.err.println("&cNo se puede crear una base de datos temporal que en MySQL, debe de ser SQLite...");
+		}
+	}
+	public void registerTemporalyDatabase(Database database) {
+		if (!temporalyDatabases.containsKey(database.getDatabaseName())) {
+			createTemporalyDatabase(database);
+			temporalyDatabases.put(database.getDatabaseName(), database);
+		} else {
+			System.err.println("[DatabaseManager]: La base de datos temporal que se ha intentado registrar ya estaba registrada '" + database.getClass().getSimpleName() + "'");
+		}
+	}
+	public void unregisterTemporalyDatabase(String id) {
+		if (temporalyDatabases.containsKey(id)) {
+			temporalyDatabases.remove(id);
+		}
+	}	
+	public void deleteTemporalyDatabase(String id) {
+		DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
+		File db = new File(config.getDataFolder(), "Databases/Temp" + id + ".db");
+		if (!db.exists()) {
+			db.delete();
+			System.out.println("[TempDatabase]: &a" + id + " Deleted succesfully!");			
+		} else {
+			System.err.println("[TempDatabase]: &c" + id + " already deleted!");
 		}
 	}
 	public void unloadDatabases() throws SQLException {

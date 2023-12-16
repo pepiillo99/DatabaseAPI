@@ -32,7 +32,6 @@ public abstract class DatabaseAPI {
 		});
 		dbManager.registerDatabase(new ServerDataDatabase());
 	}
-	public abstract void log(String name, String message);
 	public abstract boolean isPlayerOnline(UUID uuid);
 	public abstract void kickPlayer(UUID uuid, String message);
 	public DatabaseConfiguration getConfiguration() {

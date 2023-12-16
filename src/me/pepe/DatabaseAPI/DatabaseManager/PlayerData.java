@@ -57,7 +57,7 @@ public class PlayerData {
 		if (playerDatabases.containsKey(clase)) {
 			return (T) playerDatabases.get(clase);
 		} else {
-			DatabaseAPI.getInstance().log("PlayerDatabase", "La database " + clase.getSimpleName() + " no está cargada en esta PlayerData, ¿posiblemente no fue añadido posteriormente?");
+			System.err.println("[PlayerDatabase]: La database " + clase.getSimpleName() + " no está cargada en esta PlayerData, ¿posiblemente no fue añadido posteriormente?");
 			return null;
 		}
 	}
