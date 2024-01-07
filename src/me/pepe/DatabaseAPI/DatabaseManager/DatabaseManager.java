@@ -384,5 +384,8 @@ public class DatabaseManager {
 		for (Database dbs : databases.values()) {
 			dbs.closeConnection();
 		}
+		for (Database dbs : temporalyDatabases.values()) {
+			dbs.closeConnection();
+		}
 	}
 }
