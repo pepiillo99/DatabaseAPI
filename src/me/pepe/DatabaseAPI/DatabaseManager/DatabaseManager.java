@@ -310,6 +310,11 @@ public class DatabaseManager {
 	}
 	public void unregisterDatabase(Database database) {
 		if (databases.containsKey(database.getClass())) {
+			try {
+				databases.get(database.getClass()).closeConnection();
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
 			databases.remove(database.getClass());
 		}
 	}
@@ -324,42 +329,10 @@ public class DatabaseManager {
 			} catch (SQLException e) {
 				e.printStackTrace();
 			}
-		} else {
-			DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
-			File db = new File(config.getDataFolder(), "Databases/" + database.getDatabaseName() + ".db");
-			if (!db.exists()) {
-				try {
-					db.createNewFile();
-					System.out.println(db.getAbsolutePath() + " created!");
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			} else {
-				System.out.println(db.getAbsolutePath() + " loaded!");
-			}
-		}
-	}
-	protected void createTemporalyDatabase(Database database) {
-		if (database.isObligatorySQLite()) {
-			DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
-			File db = new File(config.getDataFolder(), "Databases/Temp/" + database.getDatabaseName() + ".db");
-			if (!db.exists()) {
-				try {
-					db.createNewFile();
-					System.out.println(db.getAbsolutePath() + " created!");
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			} else {
-				System.out.println(db.getAbsolutePath() + " loaded!");
-			}
-		} else {
-			System.err.println("&cNo se puede crear una base de datos temporal que en MySQL, debe de ser SQLite...");
 		}
 	}
 	public void registerTemporalyDatabase(Database database) {
 		if (!temporalyDatabases.containsKey(database.getDatabaseName())) {
-			createTemporalyDatabase(database);
 			temporalyDatabases.put(database.getDatabaseName(), database);
 		} else {
 			System.err.println("[DatabaseManager]: La base de datos temporal que se ha intentado registrar ya estaba registrada '" + database.getClass().getSimpleName() + "'");
@@ -367,13 +340,19 @@ public class DatabaseManager {
 	}
 	public void unregisterTemporalyDatabase(String id) {
 		if (temporalyDatabases.containsKey(id)) {
+			try {
+				temporalyDatabases.get(id).closeConnection();
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
 			temporalyDatabases.remove(id);
+			System.out.println("[TempDatabase]: &a" + id + " unregistered!");
 		}
 	}	
 	public void deleteTemporalyDatabase(String id) {
 		DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
-		File db = new File(config.getDataFolder(), "Databases/Temp" + id + ".db");
-		if (!db.exists()) {
+		File db = new File(config.getDataFolder(), "Databases/Temp/" + id + ".db");
+		if (db.exists()) {
 			db.delete();
 			System.out.println("[TempDatabase]: &a" + id + " Deleted succesfully!");			
 		} else {

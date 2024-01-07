@@ -29,6 +29,7 @@ import me.pepe.DatabaseAPI.Utils.MySQLConnection;
 
 public abstract class Database {
 	private String name;
+	private boolean temporaly = false;
 	private HashMap<Class<? extends DatabaseTable>, DatabaseTableInstance> tableInstances = new HashMap<Class<? extends DatabaseTable>, DatabaseTableInstance>();
 	private boolean obligatorySQLite = false;
 	private ExecutorService queue = Executors.newSingleThreadExecutor();
@@ -36,20 +37,24 @@ public abstract class Database {
 	private Connection sqlConnection;
 	private MySQLConnection mysqlConnection;
 	public Database(String name) {
-		this(name, false);
+		this(name, false, false);
 	}
-	public Database(String name, boolean obligatorySQLite) {
+	public Database(String name, boolean obligatorySQLite, boolean temporaly) {
 		this.name = name;
-		this.obligatorySQLite = obligatorySQLite;
+		this.obligatorySQLite = temporaly ? true : obligatorySQLite;
+		this.temporaly = temporaly;
 		DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
 		if (config.isSQL() || isObligatorySQLite()) {
-			File db = new File(config.getDataFolder(), "Databases/" + name + ".db");
+			File db = new File(config.getDataFolder(), "Databases/" + (temporaly ? "Temp/" : "") + name + ".db");
 			if (!db.exists()) {
 				try {
 					db.createNewFile();
+					System.out.println(db.getAbsolutePath() + " created!");
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
+			} else {
+				System.out.println(db.getAbsolutePath() + " loaded!");
 			}
 			/**
             HikariConfig hikariConfig = new HikariConfig();
