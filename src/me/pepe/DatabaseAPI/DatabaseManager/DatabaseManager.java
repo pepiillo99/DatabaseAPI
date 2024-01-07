@@ -351,7 +351,7 @@ public class DatabaseManager {
 					e.printStackTrace();
 				}
 			} else {
-				System.err.println(db.getAbsolutePath() + " already exist, temporaly db cant reload!");
+				System.out.println(db.getAbsolutePath() + " loaded!");
 			}
 		} else {
 			System.err.println("&cNo se puede crear una base de datos temporal que en MySQL, debe de ser SQLite...");
