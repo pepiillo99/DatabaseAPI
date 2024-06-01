@@ -642,7 +642,7 @@ public abstract class Database {
 					if (table.hasData()) {
 						statement = update(connection, table);
 					} else {
-						if (table.isAutoIncrement() && table.getKeyType().equals(DatabaseKeyType.INT) && table.keySerialize() instanceof Integer && ((int)table.keySerialize()) == -0 && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class)) {
+						if (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && ((long)table.keySerialize()) == -0 && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class)) {
 							String find = "SELECT * FROM " + table.getTableName() + " ORDER BY " + table.getKeyName() + " DESC LIMIT 1";
 							PreparedStatement findKeyStatement = connection.prepareStatement(find);
 							ResultSet result = findKeyStatement.executeQuery();
