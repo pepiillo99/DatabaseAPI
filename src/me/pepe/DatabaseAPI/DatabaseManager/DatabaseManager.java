@@ -1,7 +1,6 @@
 package me.pepe.DatabaseAPI.DatabaseManager;
 
 import java.io.File;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -130,7 +129,7 @@ public class DatabaseManager {
 			}			
 		});
 	}
-	public void getIdentifier(int id, Callback<Identifier> callback, Callback<Integer> notFindedCallback, boolean async) {
+	public void getIdentifier(long id, Callback<Identifier> callback, Callback<Long> notFindedCallback, boolean async) {
 		HashMap<String, Object> keys = new HashMap<String, Object>();
 		keys.put("Identifiers", id);
 		getDatabase(PlayerDataDatabase.class).getTableMultiKeysMultiEntrys(Identifier.class, keys, async, new Callback<TableDatabaseMultiKeys>() {
@@ -182,7 +181,7 @@ public class DatabaseManager {
 							public void done(String result, Exception exception) {
 								if (DatabaseAPI.getInstance().getConfiguration().canGenerateIdentifiers()) {
 									System.out.println("[Identifier]: Jugador no encontrado, generando...");
-									getDatabase(PlayerDataDatabase.class).getTable(Identifier.class, -0, new Callback<DatabaseTable>() {
+									getDatabase(PlayerDataDatabase.class).newTableDatabaseMultiKeysEntry(Identifier.class, new Callback<DatabaseTable>() {
 										@Override
 										public void done(DatabaseTable result, Exception ex) {
 											Identifier identifier = (Identifier) result;
@@ -223,7 +222,7 @@ public class DatabaseManager {
 							public void done(String result, Exception exception) {
 								if (DatabaseAPI.getInstance().getConfiguration().canGenerateIdentifiers()) {
 									System.out.println("[Identifier]: Jugador no encontrado, generando...");
-									getDatabase(PlayerDataDatabase.class).getTable(Identifier.class, -0, new Callback<DatabaseTable>() {
+									getDatabase(PlayerDataDatabase.class).newTableDatabaseMultiKeysEntry(Identifier.class, new Callback<DatabaseTable>() {
 										@Override
 										public void done(DatabaseTable result, Exception ex) {
 											Identifier identifier = (Identifier) result;

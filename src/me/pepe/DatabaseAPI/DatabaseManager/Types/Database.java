@@ -124,6 +124,9 @@ public abstract class Database {
 	public boolean isSQLite() {
 		return obligatorySQLite || DatabaseAPI.getInstance().getConfiguration().isSQL();
 	}
+	public boolean isTemporaly() {
+		return temporaly;
+	}
 	public void getConnection(Callback<Connection> callback) {
 		if (DatabaseAPI.getInstance().getConfiguration().isSQL() || isObligatorySQLite()) {
 			callback.done(sqlConnection, null);
@@ -180,7 +183,7 @@ public abstract class Database {
 									int resultSize = 0;
 									while (result.next()) {
 										resultSize++;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(result.getObject(db.getKeyName()));
+										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 										returnDB.load(result);
 										callback.done(returnDB, null);
 										if (resultSize == 0) {
@@ -204,7 +207,7 @@ public abstract class Database {
 									}
 									while (result.next()) {
 										resultSize--;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(result.getObject(db.getKeyName()));
+										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 										returnDB.load(result);
 										callback.done(returnDB, null);
 										if (resultSize == 0) {
@@ -277,6 +280,12 @@ public abstract class Database {
 			}
 		}
 	}
+	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> clase, Callback<DatabaseTable> callback) {
+		newTableDatabaseMultiKeysEntry(clase, callback, false);
+	}
+	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> clase, Callback<DatabaseTable> callback, boolean async) {
+		getTable(clase, -0L, async, callback);
+	}
 	public void getTable(Class<? extends DatabaseTable> clase, Object key, Callback<DatabaseTable> callback) {
 		getTable(clase, key, true, callback);
 	}
@@ -285,7 +294,7 @@ public abstract class Database {
 			DatabaseTable table = tableInstances.get(clase).newInstance(key);
 			if (table instanceof TableDatabaseMultiKeys) {
 				TableDatabaseMultiKeys mtdb = (TableDatabaseMultiKeys) table;
-				mtdb.buildKey((Integer) key);
+				mtdb.buildKey((Long) key);
 				load(async, mtdb, callback);
 			} else {
 				load(async, table, callback);
@@ -353,7 +362,8 @@ public abstract class Database {
 										int resultSize = 0;
 										while (result.next()) {
 											resultSize++;
-											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(result.getObject(db.getKeyName()));
+											System.out.println("test! " + clase + " - " + (result.getObject(db.getKeyName()).getClass()));
+											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 											returnDB.load(result);
 											callback.done(returnDB, null);
 											if (resultSize == 0) {
@@ -381,7 +391,7 @@ public abstract class Database {
 										}
 										while (result.next()) {
 											resultSize--;
-											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(result.getObject(db.getKeyName()));
+											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 											returnDB.load(result);
 											callback.done(returnDB, null);
 											if (resultSize == 0) {
@@ -457,7 +467,7 @@ public abstract class Database {
 									int size = 0;
 									while (result.next()) { // aqui no es necesario comprobar eso por que no tiene callback de on finish
 										size++;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(result.getObject(db.getKeyName()));
+										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 										returnDB.load(result);
 										callback.done(returnDB, null);
 									}
@@ -642,18 +652,18 @@ public abstract class Database {
 					if (table.hasData()) {
 						statement = update(connection, table);
 					} else {
-						if (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && ((long)table.keySerialize()) == -0 && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class)) {
+						if (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class)) {
 							String find = "SELECT * FROM " + table.getTableName() + " ORDER BY " + table.getKeyName() + " DESC LIMIT 1";
 							PreparedStatement findKeyStatement = connection.prepareStatement(find);
 							ResultSet result = findKeyStatement.executeQuery();
 							boolean has = result.next();
 							if (has) {
 								TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
-								mKey.buildKey(result.getInt(table.getKeyName()) + 1);
+								mKey.buildKey(result.getLong(table.getKeyName()) + 1);
 								findKeyStatement.close();
 							} else {
 								TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
-								mKey.buildKey(1);
+								mKey.buildKey(1L);
 								findKeyStatement.close();
 							}
 						} else {

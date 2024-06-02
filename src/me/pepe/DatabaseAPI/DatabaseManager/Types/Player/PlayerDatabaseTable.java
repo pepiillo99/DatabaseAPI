@@ -11,11 +11,11 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 	private PlayerData pData;
 	private long lastUpdate = 0;
 	public PlayerDatabaseTable(String name, PlayerData pData, Database database) {
-		super(name, "identifier", DatabaseKeyType.INT, database);
+		super(name, "identifier", DatabaseKeyType.LONG, database);
 		this.pData = pData;
 	}
 	@Override
-	public Integer keySerialize() {
+	public Long keySerialize() {
 		return pData.getIdentifier().getID();
 	}
 	public PlayerData getPlayerData() {

@@ -12,7 +12,7 @@ public abstract class TableDatabaseMultiKeys extends DatabaseTable {
 		hasData = true;
 		setAutoIncrement(true);
 	}
-	public abstract void buildKey(Integer key);
+	public abstract void buildKey(Long key);
 	protected abstract void buildDatabase(ResultSet result) throws SQLException;
 	public void load(ResultSet result) throws SQLException {
 		loaded = true;

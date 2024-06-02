@@ -9,7 +9,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.TableDatabaseMultiKeys;
 
 public class Identifier extends TableDatabaseMultiKeys {
-	private int identifier = 0;
+	private long identifier = 0;
 	private String name = "";
 	private UUID uuid = UUID.randomUUID();
 	public Identifier(Database database) {
@@ -40,10 +40,10 @@ public class Identifier extends TableDatabaseMultiKeys {
 		uuid = UUID.fromString(result.getString("uuid"));
 	}
 	@Override
-	public void buildKey(Integer key) {
+	public void buildKey(Long key) {
 		this.identifier = key;
 	}
-	public int getID() {
+	public long getID() {
 		return identifier;
 	}
 	public String getName() {
