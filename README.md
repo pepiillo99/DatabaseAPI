@@ -127,7 +127,6 @@ public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on ext
 And this code its for TableDatabaseMultiKeys:
 
 ```java
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -142,7 +141,6 @@ public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // on exten
     public ContactsTableMultiKeys(int id, Database database) {
         super("ContactsMulti", "id", database);
         // Here the key is the id, by default extending from TableDatabaseMultiKeys you will know that it is a DatabaseKeyType.INT.
-        setAutoIncrement(true); // We define the table to auto-increment automatically.
         this.id = id;
     }
     @Override
