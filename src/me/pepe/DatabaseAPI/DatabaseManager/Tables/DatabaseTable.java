@@ -14,6 +14,7 @@ public abstract class DatabaseTable<D extends Database> {
 	protected boolean loaded = false;
 	protected boolean hasData = false;
 	private boolean saved = true;
+	private boolean saving = false; // si la tabla actualmente está en proceso de guardado
 	private boolean autoIncrement = false;
 	private boolean hasPrimaryKey = true;
 	private Database database;
@@ -65,6 +66,12 @@ public abstract class DatabaseTable<D extends Database> {
 		} else {
 			this.saved = false;
 		}
+	}
+	public boolean isSaving() {
+		return saving;
+	}
+	public void setSaving(boolean saving) {
+		this.saving = saving;
 	}
 	/**
 	 * @return if has data

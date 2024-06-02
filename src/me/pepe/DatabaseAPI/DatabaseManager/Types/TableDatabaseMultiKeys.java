@@ -8,7 +8,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 
 public abstract class TableDatabaseMultiKeys extends DatabaseTable {
 	public TableDatabaseMultiKeys(String name, String keyName, Database database) {
-		super(name, keyName, DatabaseKeyType.LONG, database);
+		super(name, keyName, DatabaseKeyType.INT, database);
 		hasData = true;
 		setAutoIncrement(true);
 	}

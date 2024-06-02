@@ -362,7 +362,6 @@ public abstract class Database {
 										int resultSize = 0;
 										while (result.next()) {
 											resultSize++;
-											System.out.println("test! " + clase + " - " + (result.getObject(db.getKeyName()).getClass()));
 											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
 											returnDB.load(result);
 											callback.done(returnDB, null);
@@ -644,50 +643,49 @@ public abstract class Database {
 		}
 	}
 	private void save(DatabaseTable table) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					PreparedStatement statement;
-					if (table.hasData()) {
-						statement = update(connection, table);
-					} else {
-						if (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class)) {
-							String find = "SELECT * FROM " + table.getTableName() + " ORDER BY " + table.getKeyName() + " DESC LIMIT 1";
-							PreparedStatement findKeyStatement = connection.prepareStatement(find);
-							ResultSet result = findKeyStatement.executeQuery();
-							boolean has = result.next();
-							if (has) {
-								TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
-								mKey.buildKey(result.getLong(table.getKeyName()) + 1);
-								findKeyStatement.close();
-							} else {
-								TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
-								mKey.buildKey(1L);
-								findKeyStatement.close();
-							}
-						} else {
-							String find = "SELECT * FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = ? LIMIT 1;";
-							PreparedStatement findKeyStatement = connection.prepareStatement(find);
-							saveInStatement(findKeyStatement, table.keySerialize(), 1);
-							ResultSet result = findKeyStatement.executeQuery();
-							boolean has = result.next();
-							table.setHasData(has);
-						}
+		if (!table.isSaving()) {
+			table.setSaving(true);
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						PreparedStatement statement;
 						if (table.hasData()) {
 							statement = update(connection, table);
 						} else {
-							statement = insert(connection, table);
+							if (!(table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
+								String find = "SELECT * FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = ? LIMIT 1;";
+								PreparedStatement findKeyStatement = connection.prepareStatement(find);
+								saveInStatement(findKeyStatement, table.keySerialize(), 1);
+								ResultSet result = findKeyStatement.executeQuery();
+								boolean has = result.next();
+								table.setHasData(has);
+							}
+							if (table.hasData()) {
+								statement = update(connection, table);
+							} else {
+								statement = insert(connection, table);
+							}
 						}
+						statement.executeUpdate();
+						if (!table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
+			                try (ResultSet rs = statement.getGeneratedKeys()) {
+			                    if (rs.next()) {
+									TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
+									mKey.buildKey(rs.getLong(1));
+			                    }
+			                }
+						}
+						statement.close();
+						table.setSaved(true);
+					} catch(SQLException ex) {
+						ex.printStackTrace();
+					} finally {
+						table.setSaving(false);
 					}
-					statement.executeUpdate();
-					statement.close();
-					table.setSaved(true);
-				} catch(SQLException ex) {
-					ex.printStackTrace();
 				}
-			}
-		});
+			});
+		}
 	}
 	/**
 	 * This method is used to register the tables in the API so that they can be used later.
@@ -717,7 +715,7 @@ public abstract class Database {
 				@Override
 				public void done(Connection connection, Exception exception) {
 					try {
-						String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (!isSQLite() && table.isAutoIncrement() ? " AUTO_INCREMENT PRIMARY KEY" : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
+						String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (table.isAutoIncrement() ? " PRIMARY KEY " + (isSQLite() ? "AUTOINCREMENT" : "AUTO_INCREMENT") : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
 						HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
 						for (Entry<String, Object> save : saveMap.entrySet()) {
 							createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
@@ -745,19 +743,33 @@ public abstract class Database {
 		}
 	}
 	private PreparedStatement insert(Connection connection, DatabaseTable table) throws SQLException {
-		String insertStatement = "INSERT INTO " + table.getTableName() + " (" + table.getKeyName();
+		String insertStatement = "INSERT INTO " + table.getTableName() + " (";
+		boolean seetedFirstKey = false;
+		if (!table.isAutoIncrement()) {
+			seetedFirstKey = true;
+			insertStatement = insertStatement + table.getKeyName();
+		}
 		HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
 		for (Entry<String, Object> save : saveMap.entrySet()) {
-			insertStatement = insertStatement + ", " + save.getKey();
+			insertStatement = insertStatement + (!seetedFirstKey ? "" : ", ") + save.getKey();
+			seetedFirstKey = true;
 		}
-		insertStatement = insertStatement + ") VALUES (?";
+		seetedFirstKey = false;
+		insertStatement = insertStatement + ") VALUES (";
+		if (!table.isAutoIncrement()) {
+			seetedFirstKey = true;
+			insertStatement = insertStatement + "?";
+		}
 		for (int i = saveMap.size(); i > 0; i--) {
-			insertStatement = insertStatement + ", ?";
+			insertStatement = insertStatement + (!seetedFirstKey ? "" : ", ") + "?";
+			seetedFirstKey = true;
 		}
 		insertStatement = insertStatement + ")";
 		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement);
 		int statementSize = 1;
-		saveInStatement(preparedStatement, table.keySerialize(), statementSize++);
+		if (!table.isAutoIncrement()) {
+			saveInStatement(preparedStatement, table.keySerialize(), statementSize++);
+		}
 		for (Entry<String, Object> save : saveMap.entrySet()) {
 			saveInStatement(preparedStatement, save.getValue(), statementSize++);
 		}
