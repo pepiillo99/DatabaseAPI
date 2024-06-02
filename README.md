@@ -127,6 +127,7 @@ public class ContactsTable extends DatabaseTable<ServerDataDatabase> { // on ext
 And this code its for TableDatabaseMultiKeys:
 
 ```java
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -134,8 +135,8 @@ import java.util.HashMap;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.TableDatabaseMultiKeys;
 
-public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // there not necesary indicate which database you will use
-    private int id = 0; // is important define default values...
+public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // on extends you need indicate which database you will use
+    private long id = 0;
     private int number = 0;
     private String name = "";
     public ContactsTableMultiKeys(int id, Database database) {
@@ -145,7 +146,7 @@ public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // there no
         this.id = id;
     }
     @Override
-    public void buildKey(Integer key) {
+    public void buildKey(Long key) {
         this.id = key;
     }
     @Override
@@ -155,7 +156,7 @@ public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // there no
         this.name = result.getString("name");
     }
     @Override
-    public Integer keySerialize() { // i change Object to Integer
+    public Long keySerialize() { // i change Object to Integer
         return id;
     }
     @Override
@@ -170,7 +171,7 @@ public class ContactsTableMultiKeys extends TableDatabaseMultiKeys { // there no
         this.number = result.getInt("number");
         this.name = result.getString("name");
     }
-    public int getID() {
+    public long getID() {
         return id;
     }
     public int getNumber() {
