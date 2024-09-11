@@ -20,9 +20,9 @@ public abstract class DatabaseAPI {
 		configuration.getDataFolder().mkdirs();
 		this.dbManager = new DatabaseManager(this);
 		dbManager.registerDatabase(new PlayerDataDatabase());
-		dbManager.getDatabase(PlayerDataDatabase.class).registerTable(this, Identifier.class, new DatabaseTableInstance<Integer>() {
+		dbManager.getDatabase(PlayerDataDatabase.class).registerTable(this, Identifier.class, new DatabaseTableInstance<Long>() {
 			@Override
-			public DatabaseTable newInstance(Integer key) {
+			public DatabaseTable newInstance(Long key) {
 				if (key != null) {
 					return new Identifier(dbManager.getDatabase(PlayerDataDatabase.class));
 				} else {

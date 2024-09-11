@@ -39,6 +39,9 @@ public abstract class Database {
 	public Database(String name) {
 		this(name, false, false);
 	}
+	public Database(String name, boolean obligatorySQLite) {
+		this(name, obligatorySQLite, false);
+	}
 	public Database(String name, boolean obligatorySQLite, boolean temporaly) {
 		this.name = name;
 		this.obligatorySQLite = temporaly ? true : obligatorySQLite;
