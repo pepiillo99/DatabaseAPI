@@ -7,6 +7,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -670,8 +671,8 @@ public abstract class Database {
 								statement = insert(connection, table);
 							}
 						}
-						statement.executeUpdate();
-						if (!table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
+						int affectedRows = statement.executeUpdate();
+						if (affectedRows > 0 && !table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
 			                try (ResultSet rs = statement.getGeneratedKeys()) {
 			                    if (rs.next()) {
 									TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
@@ -768,7 +769,7 @@ public abstract class Database {
 			seetedFirstKey = true;
 		}
 		insertStatement = insertStatement + ")";
-		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement);
+		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement, Statement.RETURN_GENERATED_KEYS);
 		int statementSize = 1;
 		if (!table.isAutoIncrement()) {
 			saveInStatement(preparedStatement, table.keySerialize(), statementSize++);
@@ -786,7 +787,7 @@ public abstract class Database {
 			saveStatement = saveStatement + " " + save.getKey() + " = ?,";
 		}
 		saveStatement = saveStatement.substring(0, saveStatement.length() - 1) + " WHERE " + table.getKeyName() + " = ?";
-		PreparedStatement statement = connection.prepareStatement(saveStatement);
+		PreparedStatement statement = connection.prepareStatement(saveStatement, Statement.RETURN_GENERATED_KEYS);
 		int statementSize = 1;
 		for (Entry<String, Object> save : saveMap.entrySet()) {
 			saveInStatement(statement, save.getValue(), statementSize++);
