@@ -59,7 +59,7 @@ public class DatabaseManager {
 			return null;
 		}
 	}
-	public PlayerData getPlayerDatabase(int identifier) {
+	public PlayerData getPlayerDatabase(long identifier) {
 		for (PlayerData pData : playerDatabases.values()) {
 			if (pData.getIdentifier().getID() == identifier) {
 				return pData;
