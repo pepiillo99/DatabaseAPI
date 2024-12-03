@@ -342,18 +342,21 @@ public abstract class Database {
 								try {
 									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
 									for (Entry<String, Object> key : keys.entrySet()) {
-										if (select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											if (key.getKey().contains("!")) {
-												select = select + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + key.getKey() + " =?";
-											}
+										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
+											select += " AND ";
+										}
+										if (key.getKey().contains("!")) {
+											select += key.getKey().replace("!", "") + " !=?";
+										} else if (key.getKey().contains("<")) {
+											select += key.getKey().replace("<", "") + " <?";
+										} else if (key.getKey().contains(">")) {
+											select += key.getKey().replace(">", "") + " >?";
+										} else if (key.getKey().contains("<=")) {
+											select += key.getKey().replace("<=", "") + " <=?";
+										} else if (key.getKey().contains(">=")) {
+											select += key.getKey().replace(">=", "") + " >=?";
 										} else {
-											if (key.getKey().contains("!")) {
-												select = select + " AND " + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + " AND " + key.getKey() + " =?";
-											}
+											select += key.getKey() + " =?";
 										}
 									}
 									PreparedStatement statement = connection.prepareStatement(select);
@@ -447,18 +450,21 @@ public abstract class Database {
 								try {
 									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
 									for (Entry<String, Object> key : keys.entrySet()) {
-										if (select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											if (key.getKey().contains("!")) {
-												select = select + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + key.getKey() + " =?";
-											}
+										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
+											select += " AND ";
+										}
+										if (key.getKey().contains("!")) {
+											select += key.getKey().replace("!", "") + " !=?";
+										} else if (key.getKey().contains("<")) {
+											select += key.getKey().replace("<", "") + " <?";
+										} else if (key.getKey().contains(">")) {
+											select += key.getKey().replace(">", "") + " >?";
+										} else if (key.getKey().contains("<=")) {
+											select += key.getKey().replace("<=", "") + " <=?";
+										} else if (key.getKey().contains(">=")) {
+											select += key.getKey().replace(">=", "") + " >=?";
 										} else {
-											if (key.getKey().contains("!")) {
-												select = select + " AND " + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + " AND " + key.getKey() + " =?";
-											}
+											select += key.getKey() + " =?";
 										}
 									}
 									PreparedStatement statement = connection.prepareStatement(select);
@@ -519,18 +525,21 @@ public abstract class Database {
 								try {
 									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
 									for (Entry<String, Object> key : keys.entrySet()) {
-										if (select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											if (key.getKey().contains("!")) {
-												select = select + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + key.getKey() + " =?";
-											}
+										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
+											select += " AND ";
+										}
+										if (key.getKey().contains("!")) {
+											select += key.getKey().replace("!", "") + " !=?";
+										} else if (key.getKey().contains("<")) {
+											select += key.getKey().replace("<", "") + " <?";
+										} else if (key.getKey().contains(">")) {
+											select += key.getKey().replace(">", "") + " >?";
+										} else if (key.getKey().contains("<=")) {
+											select += key.getKey().replace("<=", "") + " <=?";
+										} else if (key.getKey().contains(">=")) {
+											select += key.getKey().replace(">=", "") + " >=?";
 										} else {
-											if (key.getKey().contains("!")) {
-												select = select + " AND " + key.getKey().replace("!", "") + " !=?";
-											} else {
-												select = select + " AND " + key.getKey() + " =?";
-											}
+											select += key.getKey() + " =?";
 										}
 									}
 									select = select + " LIMIT 1";
