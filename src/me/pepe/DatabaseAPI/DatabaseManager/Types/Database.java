@@ -340,26 +340,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception ex) {
 							if (ex == null) {
 								try {
-									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
-									for (Entry<String, Object> key : keys.entrySet()) {
-										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											select += " AND ";
-										}
-										if (key.getKey().contains("!")) {
-											select += key.getKey().replace("!", "") + " !=?";
-										} else if (key.getKey().contains("<")) {
-											select += key.getKey().replace("<", "") + " <?";
-										} else if (key.getKey().contains(">")) {
-											select += key.getKey().replace(">", "") + " >?";
-										} else if (key.getKey().contains("<=")) {
-											select += key.getKey().replace("<=", "") + " <=?";
-										} else if (key.getKey().contains(">=")) {
-											select += key.getKey().replace(">=", "") + " >=?";
-										} else {
-											select += key.getKey() + " =?";
-										}
-									}
-									PreparedStatement statement = connection.prepareStatement(select);
+									PreparedStatement statement = prepareStatement(db, keys, connection);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -448,26 +429,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception exception) {
 							if (exception == null) {
 								try {
-									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
-									for (Entry<String, Object> key : keys.entrySet()) {
-										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											select += " AND ";
-										}
-										if (key.getKey().contains("!")) {
-											select += key.getKey().replace("!", "") + " !=?";
-										} else if (key.getKey().contains("<")) {
-											select += key.getKey().replace("<", "") + " <?";
-										} else if (key.getKey().contains(">")) {
-											select += key.getKey().replace(">", "") + " >?";
-										} else if (key.getKey().contains("<=")) {
-											select += key.getKey().replace("<=", "") + " <=?";
-										} else if (key.getKey().contains(">=")) {
-											select += key.getKey().replace(">=", "") + " >=?";
-										} else {
-											select += key.getKey() + " =?";
-										}
-									}
-									PreparedStatement statement = connection.prepareStatement(select);
+									PreparedStatement statement = prepareStatement(db, keys, connection);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -524,6 +486,27 @@ public abstract class Database {
 			}			
 		});
 	}
+	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
+		getConnection(new Callback<Connection>() {
+			@Override
+			public void done(Connection connection, Exception exception) {
+				try {
+					DatabaseTable table = tableInstances.get(clase).newInstance(null);
+					PreparedStatement statement = prepareStatement("MAX(" + column + ") AS result", table, keys, connection);
+					ResultSet result = statement.executeQuery();
+					if (result.next()) {
+						callback.done(result.getObject("result"), exception);
+					} else {
+						callback.done(null, exception);
+					}
+					result.close();
+					statement.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}			
+		});
+	}
 	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
 		getConnection(new Callback<Connection>() {
 			@Override
@@ -531,6 +514,27 @@ public abstract class Database {
 				try {
 					DatabaseTable table = tableInstances.get(clase).newInstance(null);
 					PreparedStatement statement = connection.prepareStatement("SELECT MIN(" + column + ") AS result FROM " + table.getTableName());
+					ResultSet result = statement.executeQuery();
+					if (result.next()) {
+						callback.done(result.getObject("result"), exception);
+					} else {
+						callback.done(null, exception);
+					}
+					result.close();
+					statement.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}			
+		});
+	}
+	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
+		getConnection(new Callback<Connection>() {
+			@Override
+			public void done(Connection connection, Exception exception) {
+				try {
+					DatabaseTable table = tableInstances.get(clase).newInstance(null);
+					PreparedStatement statement = prepareStatement("MIN(" + column + ") AS result", table, keys, connection);
 					ResultSet result = statement.executeQuery();
 					if (result.next()) {
 						callback.done(result.getObject("result"), exception);
@@ -566,6 +570,27 @@ public abstract class Database {
 			}			
 		});
 	}
+	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Double> callback) {
+		getConnection(new Callback<Connection>() {
+			@Override
+			public void done(Connection connection, Exception exception) {
+				try {
+					DatabaseTable table = tableInstances.get(clase).newInstance(null);
+					PreparedStatement statement = prepareStatement("AVG(" + column + ") AS result", table, keys, connection);
+					ResultSet result = statement.executeQuery();
+					if (result.next()) {
+						callback.done(result.getDouble("result"), exception);
+					} else {
+						callback.done(0D, exception);
+					}
+					result.close();
+					statement.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}			
+		});
+	}
 	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
 		getConnection(new Callback<Connection>() {
 			@Override
@@ -573,6 +598,27 @@ public abstract class Database {
 				try {
 					DatabaseTable table = tableInstances.get(clase).newInstance(null);
 					PreparedStatement statement = connection.prepareStatement("SELECT SUM(" + column + ") AS result FROM " + table.getTableName());
+					ResultSet result = statement.executeQuery();
+					if (result.next()) {
+						callback.done(result.getInt("result"), exception);
+					} else {
+						callback.done(0, exception);
+					}
+					result.close();
+					statement.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}			
+		});
+	}
+	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
+		getConnection(new Callback<Connection>() {
+			@Override
+			public void done(Connection connection, Exception exception) {
+				try {
+					DatabaseTable table = tableInstances.get(clase).newInstance(null);
+					PreparedStatement statement = prepareStatement("SUM(" + column + ") AS result", table, keys, connection);
 					ResultSet result = statement.executeQuery();
 					if (result.next()) {
 						callback.done(result.getInt("result"), exception);
@@ -608,6 +654,27 @@ public abstract class Database {
 			}			
 		});
 	}
+	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
+		getConnection(new Callback<Connection>() {
+			@Override
+			public void done(Connection connection, Exception exception) {
+				try {
+					DatabaseTable table = tableInstances.get(clase).newInstance(null);
+					PreparedStatement statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
+					ResultSet result = statement.executeQuery();
+					if (result.next()) {
+						callback.done(result.getInt("result"), exception);
+					} else {
+						callback.done(0, exception);
+					}
+					result.close();
+					statement.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}			
+		});
+	}
 	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
 		if (tableInstances.containsKey(clase)) {
 			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
@@ -628,27 +695,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception exception) {
 							if (exception == null) {
 								try {
-									String select = "SELECT * FROM " + db.getTableName() + " WHERE ";
-									for (Entry<String, Object> key : keys.entrySet()) {
-										if (!select.equals("SELECT * FROM " + db.getTableName() + " WHERE ")) {
-											select += " AND ";
-										}
-										if (key.getKey().contains("!")) {
-											select += key.getKey().replace("!", "") + " !=?";
-										} else if (key.getKey().contains("<")) {
-											select += key.getKey().replace("<", "") + " <?";
-										} else if (key.getKey().contains(">")) {
-											select += key.getKey().replace(">", "") + " >?";
-										} else if (key.getKey().contains("<=")) {
-											select += key.getKey().replace("<=", "") + " <=?";
-										} else if (key.getKey().contains(">=")) {
-											select += key.getKey().replace(">=", "") + " >=?";
-										} else {
-											select += key.getKey() + " =?";
-										}
-									}
-									select = select + " LIMIT 1";
-									PreparedStatement statement = connection.prepareStatement(select);
+									PreparedStatement statement = prepareStatement(db, keys, connection, true);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -674,6 +721,47 @@ public abstract class Database {
 		} else {
 			System.err.println("This database " + clase.getName() + " is not registred");
 		}
+	}
+	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
+		return prepareStatement("*", table, keys, connection, false);
+	}
+	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, boolean limit) throws SQLException {
+		return prepareStatement("*", table, keys, connection, limit);
+	}
+	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
+		return prepareStatement(selectQuery, table, keys, connection, false);
+	}
+	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, boolean limit) throws SQLException {
+		String select = "SELECT " + selectQuery + " FROM " + table.getTableName() + " WHERE ";
+		boolean first = true;
+		for (Entry<String, Object> key : keys.entrySet()) {
+			if (!first) {
+				select += " AND ";
+			}
+			first = false;
+			if (key.getKey().contains("!")) {
+				select += key.getKey().replace("!", "") + " !=?";
+			} else if (key.getKey().contains("<")) {
+				select += key.getKey().replace("<", "") + " <?";
+			} else if (key.getKey().contains(">")) {
+				select += key.getKey().replace(">", "") + " >?";
+			} else if (key.getKey().contains("<=")) {
+				select += key.getKey().replace("<=", "") + " <=?";
+			} else if (key.getKey().contains(">=")) {
+				select += key.getKey().replace(">=", "") + " >=?";
+			} else {
+				select += key.getKey() + " =?";
+			}
+		}
+		if (limit) {
+			select += " LIMIT 1";
+		}
+		PreparedStatement statement = connection.prepareStatement(select);
+		int statementSize = 1;
+		for (Entry<String, Object> key : keys.entrySet()) {
+			saveInStatement(statement, key.getValue(), statementSize++);
+		}
+		return statement;
 	}
 	public void load(boolean async, DatabaseTable table) {
 		if (!table.isLoaded()) {
