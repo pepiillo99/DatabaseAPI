@@ -835,20 +835,23 @@ public abstract class Database {
 		}
 	}
 	public void save(boolean async, DatabaseTable table) {
+		save(async, table, null);
+	}
+	public void save(boolean async, DatabaseTable table, Callback<Boolean> callback) {
 		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved()) {
 			if (async) {
 				queue.submit(new Runnable() {
 					@Override
 					public void run() {
-						save(table);
+						save(table, callback);
 					}
 				});
 			} else {
-				save(table);
+				save(table, callback);
 			}
 		}
 	}
-	private void save(DatabaseTable table) {
+	private void save(DatabaseTable table, Callback<Boolean> callback) {
 		if (!table.isSaving()) {
 			table.setSaving(true);
 			getConnection(new Callback<Connection>() {
@@ -884,6 +887,9 @@ public abstract class Database {
 						}
 						statement.close();
 						table.setSaved(true);
+						if (callback != null) {
+							callback.done(true, exception);
+						}
 					} catch(SQLException ex) {
 						ex.printStackTrace();
 					} finally {

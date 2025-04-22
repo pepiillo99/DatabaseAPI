@@ -6,6 +6,7 @@ import java.util.HashMap;
 
 import me.pepe.DatabaseAPI.DatabaseManager.DatabaseKeyType;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
+import me.pepe.DatabaseAPI.Utils.Callback;
 
 public abstract class DatabaseTable<D extends Database> {
 	private String name;
@@ -127,9 +128,17 @@ public abstract class DatabaseTable<D extends Database> {
 	/**
 	 * Save the data from the table.
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param callback - callback executed on save
 	 */
 	public void save(boolean async) {
-		getDatabase().save(async, this);
+		getDatabase().save(async, this, null);
+	}
+	/**
+	 * Save the data from the table.
+	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 */
+	public void save(boolean async, Callback<Boolean> callback) {
+		getDatabase().save(async, this, callback);
 	}
 	/**
 	 * You can add this method to your class to override it and do some action, this will be executed when loading the table.
