@@ -328,8 +328,8 @@ public abstract class Database {
 				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
 				List<String> noKeys = new ArrayList<String>();
 				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(key.getKey().replace("!", ""))) {
-						if (!key.getKey().replace("!", "").equals(db.getKeyName())) {
+					if (!map.containsKey(keyReplace(key.getKey()))) {
+						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
 							noKeys.add(key.getKey());
 						}
 					}
@@ -417,8 +417,8 @@ public abstract class Database {
 				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
 				List<String> noKeys = new ArrayList<String>();
 				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(key.getKey().replace("!", ""))) {
-						if (!key.getKey().replace("!", "").equals(db.getKeyName())) {
+					if (!map.containsKey(keyReplace(key.getKey()))) {
+						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
 							noKeys.add(key.getKey());
 						}
 					}
@@ -683,8 +683,8 @@ public abstract class Database {
 				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
 				List<String> noKeys = new ArrayList<String>();
 				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(key.getKey().replace("!", ""))) {
-						if (!key.getKey().replace("!", "").equals(db.getKeyName())) {
+					if (!map.containsKey(keyReplace(key.getKey()))) {
+						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
 							noKeys.add(key.getKey());
 						}
 					}
@@ -1065,6 +1065,9 @@ public abstract class Database {
 		} else {
 			return "TEXT";
 		}
+	}
+	private String keyReplace(String key) {		
+		return key.replace("!", "").replace("=", "").replace("<", "").replace(">", "").replace("!", "").replace("!", "");
 	}
 	public void closeConnection() throws SQLException {
 		if (sqlConnection != null) {
