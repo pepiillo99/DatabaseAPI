@@ -741,14 +741,14 @@ public abstract class Database {
 			first = false;
 			if (key.getKey().contains("!")) {
 				select += key.getKey().replace("!", "") + " !=?";
-			} else if (key.getKey().contains("<")) {
-				select += key.getKey().replace("<", "") + " <?";
-			} else if (key.getKey().contains(">")) {
-				select += key.getKey().replace(">", "") + " >?";
 			} else if (key.getKey().contains("<=")) {
 				select += key.getKey().replace("<=", "") + " <=?";
 			} else if (key.getKey().contains(">=")) {
 				select += key.getKey().replace(">=", "") + " >=?";
+			} else if (key.getKey().contains("<")) {
+				select += key.getKey().replace("<", "") + " <?";
+			} else if (key.getKey().contains(">")) {
+				select += key.getKey().replace(">", "") + " >?";
 			} else {
 				select += key.getKey() + " =?";
 			}
