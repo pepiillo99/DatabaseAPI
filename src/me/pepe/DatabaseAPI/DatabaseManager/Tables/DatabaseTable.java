@@ -128,7 +128,6 @@ public abstract class DatabaseTable<D extends Database> {
 	/**
 	 * Save the data from the table.
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
-	 * @param callback - callback executed on save
 	 */
 	public void save(boolean async) {
 		getDatabase().save(async, this, null);
@@ -136,6 +135,7 @@ public abstract class DatabaseTable<D extends Database> {
 	/**
 	 * Save the data from the table.
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param callback - callback executed on save
 	 */
 	public void save(boolean async, Callback<Boolean> callback) {
 		getDatabase().save(async, this, callback);

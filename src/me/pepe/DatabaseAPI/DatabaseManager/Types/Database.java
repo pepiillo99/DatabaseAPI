@@ -649,7 +649,7 @@ public abstract class Database {
 					result.close();
 					statement.close();
 				} catch (SQLException e) {
-					e.printStackTrace();
+					callback.done(-1, e);
 				}
 			}			
 		});
@@ -670,7 +670,7 @@ public abstract class Database {
 					result.close();
 					statement.close();
 				} catch (SQLException e) {
-					e.printStackTrace();
+					callback.done(-1, e);
 				}
 			}			
 		});
@@ -705,7 +705,7 @@ public abstract class Database {
 									result.close();
 									statement.close();
 								} catch(SQLException ex) {
-									ex.printStackTrace();
+									callback.done(false, exception);
 								}
 							} else {
 								exception.printStackTrace();
