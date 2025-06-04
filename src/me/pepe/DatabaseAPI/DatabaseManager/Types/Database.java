@@ -862,7 +862,7 @@ public abstract class Database {
 						if (table.hasData()) {
 							statement = update(connection, table);
 						} else {
-							if (!(table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
+							if (!(table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && TableDatabaseMultiKeys.class.isAssignableFrom(table.getClass()))) {
 								String find = "SELECT * FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = ? LIMIT 1;";
 								PreparedStatement findKeyStatement = connection.prepareStatement(find);
 								saveInStatement(findKeyStatement, table.keySerialize(), 1);
@@ -877,7 +877,7 @@ public abstract class Database {
 							}
 						}
 						int affectedRows = statement.executeUpdate();
-						if (affectedRows > 0 && !table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && table.getClass().getSuperclass().equals(TableDatabaseMultiKeys.class))) {
+						if (affectedRows > 0 && !table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && TableDatabaseMultiKeys.class.isAssignableFrom(table.getClass()))) {
 			                try (ResultSet rs = statement.getGeneratedKeys()) {
 			                    if (rs.next()) {
 									TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
