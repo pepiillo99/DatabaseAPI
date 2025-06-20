@@ -749,6 +749,8 @@ public abstract class Database {
 				select += key.getKey().replace("<", "") + " <?";
 			} else if (key.getKey().contains(">")) {
 				select += key.getKey().replace(">", "") + " >?";
+			} else if (key.getKey().contains("LIKE")) {
+				select += key.getKey().replace("LIKE", "") + " LIKE ?";
 			} else {
 				select += key.getKey() + " =?";
 			}
