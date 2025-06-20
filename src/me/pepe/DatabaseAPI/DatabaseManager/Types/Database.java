@@ -1075,7 +1075,7 @@ public abstract class Database {
 		}
 	}
 	private String keyReplace(String key) {		
-		return key.replace("!", "").replace("=", "").replace("<", "").replace(">", "").replace("!", "").replace("!", "");
+		return key.replace("!", "").replace("=", "").replace("<", "").replace(">", "").replace("!", "").replace("!", "").replace("LIKE", "");
 	}
 	public void closeConnection() throws SQLException {
 		if (sqlConnection != null) {
