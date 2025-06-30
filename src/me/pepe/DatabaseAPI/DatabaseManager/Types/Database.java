@@ -973,7 +973,6 @@ public abstract class Database {
 								createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
 							}
 							createTableStatement = createTableStatement + ");";
-							System.out.println(createTableStatement);
 							PreparedStatement statement = connection.prepareStatement(createTableStatement);
 							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha generado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 							statement.executeUpdate();
