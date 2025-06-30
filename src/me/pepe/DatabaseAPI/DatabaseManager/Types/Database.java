@@ -947,7 +947,7 @@ public abstract class Database {
 							    String type = getStatementName(entry.getValue());
 							    expectedColumns.put(columnName, type);
 							}				
-							expectedColumns.put(table.getKeyName(), table.getKeyType().getStatementName());			
+							expectedColumns.put(table.getKeyName(), table.getKeyType().getStatementName(!isSQLite()));			
 							for (Entry<String, String> expected : expectedColumns.entrySet()) {
 							    String column = expected.getKey();
 							    String expectedType = expected.getValue();
@@ -967,7 +967,7 @@ public abstract class Database {
 							    }
 							}
 						} else {
-							String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (table.isAutoIncrement() ? " PRIMARY KEY " + (isSQLite() ? "AUTOINCREMENT" : "AUTO_INCREMENT") : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
+							String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName(!isSQLite()) + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (table.isAutoIncrement() ? " PRIMARY KEY " + (isSQLite() ? "AUTOINCREMENT" : "AUTO_INCREMENT") : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
 							HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
 							for (Entry<String, Object> save : saveMap.entrySet()) {
 								createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
