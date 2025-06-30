@@ -941,13 +941,13 @@ public abstract class Database {
 							}
 							columns.close();							
 							Map<String, Object> expectedMap = table.serialize(new HashMap<String, Object>());
-							expectedMap.put(table.getKeyName(), table.keySerialize());
 							Map<String, String> expectedColumns = new HashMap<String, String>();
 							for (Entry<String, Object> entry : expectedMap.entrySet()) {
 							    String columnName = entry.getKey();
 							    String type = getStatementName(entry.getValue());
 							    expectedColumns.put(columnName, type);
-							}							
+							}				
+							expectedColumns.put(table.getKeyName(), table.getKeyType().getStatementName());			
 							for (Entry<String, String> expected : expectedColumns.entrySet()) {
 							    String column = expected.getKey();
 							    String expectedType = expected.getValue();
@@ -973,6 +973,7 @@ public abstract class Database {
 								createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
 							}
 							createTableStatement = createTableStatement + ");";
+							System.out.println(createTableStatement);
 							PreparedStatement statement = connection.prepareStatement(createTableStatement);
 							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha generado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 							statement.executeUpdate();
@@ -1126,7 +1127,7 @@ public abstract class Database {
 		} else if (className.equals("Double")) {
 			return "DOUBLE";
 		} else if (className.equals("Long")) {
-			return isSQLite() ? "INTEGER" : "LONG";
+			return "LONG";
 		} else if (className.equals("Boolean")) {
 			return "BOOLEAN";
 		} else {
