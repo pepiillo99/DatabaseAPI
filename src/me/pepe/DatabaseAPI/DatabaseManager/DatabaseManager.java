@@ -187,8 +187,7 @@ public class DatabaseManager {
 											Identifier identifier = (Identifier) result;
 											identifier.setName(name);
 											identifier.setUUID(uuid);
-											identifier.setSaved(false);
-											identifier.save(false);
+											identifier.save(false, false);
 											System.out.println("[Identifier]: Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
 											PlayerData pData = new PlayerData(identifier);
 											playerDatabases.put(uuid, pData);
@@ -228,7 +227,7 @@ public class DatabaseManager {
 											Identifier identifier = (Identifier) result;
 											identifier.setName(name);
 											identifier.setUUID(uuid);
-											identifier.save(false);
+											identifier.save(false, false);
 											System.out.println("[Identifier]: Jugador no encontrado, creado exitosamente con la ID: " + identifier.getID());
 											PlayerData pData = new PlayerData(identifier);
 											playerDatabases.put(uuid, pData);

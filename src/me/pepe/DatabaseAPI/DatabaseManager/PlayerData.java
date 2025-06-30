@@ -66,7 +66,7 @@ public class PlayerData {
 	}
 	public void saveAll(boolean async) {
 		for (Entry<Class<? extends PlayerDatabaseTable>, PlayerDatabaseTable> db : playerDatabases.entrySet()) {
-			db.getValue().save(async);
+			db.getValue().save(async, false);
 		}
 	}
 	public boolean hasIdentifier() {

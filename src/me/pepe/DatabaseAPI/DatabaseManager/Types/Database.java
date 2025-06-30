@@ -3,6 +3,7 @@ package me.pepe.DatabaseAPI.DatabaseManager.Types;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -11,6 +12,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -23,7 +25,6 @@ import me.pepe.DatabaseAPI.DatabaseManager.Identifier.Identifier;
 import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.PlayerDatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Multi.MultiPlayerDatabaseTable;
-import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Simple.SimplePlayerDatabaseTable;
 import me.pepe.DatabaseAPI.Utils.Callback;
 import me.pepe.DatabaseAPI.Utils.DatabaseConfiguration;
 import me.pepe.DatabaseAPI.Utils.MySQLConnection;
@@ -247,6 +248,7 @@ public abstract class Database {
 								returnDB.setHasData(true);
 								returnDB.setLoaded();
 								returnDB.deserialize(resultSet);
+								returnDB.reloadLastSave();
 								callback.done(returnDB, null);
 								if (resultSize == 0) {
 									if (onFinish != null) {
@@ -811,12 +813,8 @@ public abstract class Database {
 							table.deserialize(resultSet);
 						}
 						table.setLoaded();
-						if (!table.hasData()) {
-							if (!(table instanceof SimplePlayerDatabaseTable)) {
-								table.setSaved(false);
-							}
-						}
 						table.onLoad(table.hasData());
+						table.reloadLastSave();
 						resultSet.close();
 						statement.close();
 						if (callback != null) {
@@ -836,11 +834,11 @@ public abstract class Database {
 			});
 		}
 	}
-	public void save(boolean async, DatabaseTable table) {
-		save(async, table, null);
+	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table) {
+		save(async, ignoreColumnsUpdate, table, null);
 	}
-	public void save(boolean async, DatabaseTable table, Callback<Boolean> callback) {
-		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved()) {
+	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table, Callback<Boolean> callback) {
+		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
 			if (async) {
 				queue.submit(new Runnable() {
 					@Override
@@ -888,7 +886,7 @@ public abstract class Database {
 			                }
 						}
 						statement.close();
-						table.setSaved(true);
+						table.reloadLastSave();
 						if (callback != null) {
 							callback.done(true, exception);
 						}
@@ -929,15 +927,56 @@ public abstract class Database {
 				@Override
 				public void done(Connection connection, Exception exception) {
 					try {
-						String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (table.isAutoIncrement() ? " PRIMARY KEY " + (isSQLite() ? "AUTOINCREMENT" : "AUTO_INCREMENT") : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
-						HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
-						for (Entry<String, Object> save : saveMap.entrySet()) {
-							createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
+						DatabaseMetaData meta = connection.getMetaData();
+						ResultSet rs = meta.getTables(null, null, table.getTableName(), new String[] {"TABLE"});
+						boolean tableExists = rs.next();
+						if (tableExists) {
+							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
+							Map<String, String> actualColumns = new HashMap<>();
+							ResultSet columns = meta.getColumns(null, null, table.getTableName(), null);
+							while (columns.next()) {
+							    String columnName = columns.getString("COLUMN_NAME");
+							    String dataType = columns.getString("TYPE_NAME");
+							    actualColumns.put(columnName, dataType);
+							}
+							columns.close();							
+							Map<String, Object> expectedMap = table.serialize(new HashMap<String, Object>());
+							expectedMap.put(table.getKeyName(), table.keySerialize());
+							Map<String, String> expectedColumns = new HashMap<String, String>();
+							for (Entry<String, Object> entry : expectedMap.entrySet()) {
+							    String columnName = entry.getKey();
+							    String type = getStatementName(entry.getValue());
+							    expectedColumns.put(columnName, type);
+							}							
+							for (Entry<String, String> expected : expectedColumns.entrySet()) {
+							    String column = expected.getKey();
+							    String expectedType = expected.getValue();
+
+							    if (!actualColumns.containsKey(column)) {
+							    	tableInstance.registerError("Missing column " + column);
+							    } else {
+							        String actualType = actualColumns.get(column);
+							        if (!actualType.equalsIgnoreCase(expectedType)) {
+							        	tableInstance.registerError("Different type in column: " + column + " (expected: " + expectedType + ", current: " + actualType + ")");
+							        }
+							    }
+							}							
+							for (String dbColumn : actualColumns.keySet()) {
+							    if (!expectedColumns.containsKey(dbColumn)) {
+							    	tableInstance.registerError("Extra column in table, not used in DatabaseTable: " + dbColumn);
+							    }
+							}
+						} else {
+							String createTableStatement = "CREATE TABLE IF NOT EXISTS " + table.getTableName() + " (" + table.getKeyName() + " " + table.getKeyType().getStatementName() + (table instanceof MultiPlayerDatabaseTable ? ", data_name VARCHAR(50) NOT NULL" : (table.isAutoIncrement() ? " PRIMARY KEY " + (isSQLite() ? "AUTOINCREMENT" : "AUTO_INCREMENT") : (table.hasPrimaryKey() ? " PRIMARY KEY" : " NOT NULL")));
+							HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
+							for (Entry<String, Object> save : saveMap.entrySet()) {
+								createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
+							}
+							createTableStatement = createTableStatement + ");";
+							PreparedStatement statement = connection.prepareStatement(createTableStatement);
+							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha generado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
+							statement.executeUpdate();
 						}
-						createTableStatement = createTableStatement + ");";
-						PreparedStatement statement = connection.prepareStatement(createTableStatement);
-						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
-						statement.executeUpdate();
 						tableInstances.put(tableClass, tableInstance);
 						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
 					} catch(SQLException ex) {
@@ -946,6 +985,27 @@ public abstract class Database {
 				}			
 			});
 		}
+	}
+	public boolean hasError() {
+		for (DatabaseTableInstance tableInstance : tableInstances.values()) {
+			if (tableInstance.hasError()) {
+				return true;
+			}
+		}
+		return false;
+	}
+	public HashMap<String, List<String>> getErrors() {
+		HashMap<String, List<String>> errors = new HashMap<String, List<String>>();
+		for (DatabaseTableInstance<?> tableInstance : tableInstances.values()) {
+			if (tableInstance.hasError()) {
+				List<String> tableErrors = new ArrayList<String>();
+				for (String error : tableInstance.getErrors()) {
+					tableErrors.add(error);
+				}
+				errors.put(tableInstance.newInstance(null).getTableName(), tableErrors);
+			}
+		}
+		return errors;
 	}
 	public void editTableInstance(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance) {
 		DatabaseTable table = tableInstance.newInstance(null);
@@ -1031,7 +1091,6 @@ public abstract class Database {
 					PreparedStatement statement = delete(connection, table);
 					statement.executeUpdate();
 					statement.close();
-					table.setSaved(false);
 					table.setHasData(false);
 				} catch(SQLException ex) {
 					ex.printStackTrace();
@@ -1067,14 +1126,14 @@ public abstract class Database {
 		} else if (className.equals("Double")) {
 			return "DOUBLE";
 		} else if (className.equals("Long")) {
-			return "LONG";
+			return isSQLite() ? "INTEGER" : "LONG";
 		} else if (className.equals("Boolean")) {
 			return "BOOLEAN";
 		} else {
 			return "TEXT";
 		}
 	}
-	private String keyReplace(String key) {		
+	private String keyReplace(String key) {
 		return key.replace("!", "").replace("=", "").replace("<", "").replace(">", "").replace("!", "").replace("!", "").replace("LIKE", "");
 	}
 	public void closeConnection() throws SQLException {

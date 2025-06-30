@@ -34,11 +34,9 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 			if (multidb.hasData(dataName)) {
 				multidb.getData(dataName).setNecesarySave(true);
 				if (priority) {
-					setSaved(false);
 					multidb.save(true);
 				} else {
 					if ((lastUpdate + 10000) - System.currentTimeMillis() <= 0) {
-						setSaved(false);
 						multidb.save(true);
 					}
 				}
@@ -48,19 +46,17 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 	}
 	protected void update(boolean priority) {
 		this.update(priority, new Callback<Boolean>() { // no puedo ponerlo nullo porque entiende que es el metodo del dataname ;(
-
 			@Override
 			public void done(Boolean result, Exception exception) {}
 		});
 	}
 	protected void update(boolean priority, Callback<Boolean> callback) {
 		if (this instanceof SimplePlayerDatabaseTable) {
-			setSaved(false);
 			if (priority) {
-				getDatabase().save(true, this, callback);
+				getDatabase().save(true, false, this, callback);
 			} else {
 				if ((lastUpdate + 10000) - System.currentTimeMillis() <= 0) {
-					getDatabase().save(true, this, callback);
+					getDatabase().save(true, false, this, callback);
 				}
 			}
 			lastUpdate = System.currentTimeMillis();

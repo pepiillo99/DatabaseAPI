@@ -108,6 +108,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 					resultSet.close();
 					statement.close();
 					loaded = true;
+					reloadLastSave();
 					if (callback != null) {
 						callback.done(thissss, null);
 					}
@@ -119,6 +120,18 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 	}
 	@Override
 	public void save(boolean async) {
+		save(async, true, null);
+	}
+	@Override
+	public void save(boolean async, boolean ignoreColumnsUpdate) {
+		save(async, ignoreColumnsUpdate, null);
+	}
+	@Override
+	public void save(boolean async, Callback callback) {
+		save(async, true, callback);
+	}
+	@Override
+	public void save(boolean async, boolean ignoreColumnsUpdate, Callback callback) {
 		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getTableName()) && isLoaded()) {
 			if (async) {
 				getDatabase().getQueue().submit(new Runnable() {
@@ -134,7 +147,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 	}
 	private void saveAll() {
 		for (Entry<String, V> entrys : datas.entrySet()) {
-			if (entrys.getValue().isNecesarySave()) {
+			if (entrys.getValue().isNecesarySave(true)) {
 				getDatabase().getConnection(new Callback<Connection>() {
 					@Override
 					public void done(Connection connection, Exception exception) {

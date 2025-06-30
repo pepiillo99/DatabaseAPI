@@ -2,7 +2,9 @@ package me.pepe.DatabaseAPI.DatabaseManager.Tables;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import me.pepe.DatabaseAPI.DatabaseManager.DatabaseKeyType;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
@@ -14,11 +16,12 @@ public abstract class DatabaseTable<D extends Database> {
 	private DatabaseKeyType keyType;
 	protected boolean loaded = false;
 	protected boolean hasData = false;
-	private boolean saved = true;
 	private boolean saving = false; // si la tabla actualmente está en proceso de guardado
 	private boolean autoIncrement = false;
 	private boolean hasPrimaryKey = true;
 	private Database database;
+	private HashMap<String, Object> lastSave;
+	private List<String> ignoreColumUpdates = new ArrayList<String>();
 	public DatabaseTable(String name, String keyName, DatabaseKeyType keyType, Database database) {
 		this.name = name;
 		this.keyName = keyName;
@@ -44,11 +47,28 @@ public abstract class DatabaseTable<D extends Database> {
 	public boolean isLoaded() {
 		return loaded;
 	}
+	public void reloadLastSave() {
+		this.lastSave = serialize(new HashMap<String, Object>());
+	}
 	/**
 	 * @return if table is saved
 	 */
-	public boolean isSaved() {
-		return saved;
+	public boolean isSaved(boolean ignoreColumnsUpdate) {
+		if (lastSave != null) {
+			HashMap<String, Object> currentData = serialize(new HashMap<String, Object>());
+			if (ignoreColumnsUpdate) {
+				HashMap<String, Object> currentLastSave = (HashMap<String, Object>) lastSave.clone();
+				for (String ignore : ignoreColumUpdates) {
+					currentData.remove(ignore);
+					currentLastSave.remove(ignore);
+				}
+				return currentLastSave.equals(currentData);
+			} else {
+				return lastSave.equals(serialize(new HashMap<String, Object>()));
+			}
+		} else {
+			return false;
+		}
 	}
 	public void setLoaded() {
 		loaded = true;
@@ -60,14 +80,6 @@ public abstract class DatabaseTable<D extends Database> {
 	 * Method used to define if the database data has been saved, then save it using save(..).
 	 * @param saved - boolean which to set if the data is saved
 	 */
-	public void setSaved(boolean saved) {
-		if (saved) {
-			this.saved = true;
-			hasData = true;
-		} else {
-			this.saved = false;
-		}
-	}
 	public boolean isSaving() {
 		return saving;
 	}
@@ -130,7 +142,7 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
 	 */
 	public void save(boolean async) {
-		getDatabase().save(async, this, null);
+		getDatabase().save(async, true, this, null);
 	}
 	/**
 	 * Save the data from the table.
@@ -138,7 +150,24 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param callback - callback executed on save
 	 */
 	public void save(boolean async, Callback<Boolean> callback) {
-		getDatabase().save(async, this, callback);
+		getDatabase().save(async, true, this, callback);
+	}
+	/**
+	 * Save the data from the table.
+	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
+	 */
+	public void save(boolean async, boolean ignoreColumnsUpdate) {
+		getDatabase().save(async, ignoreColumnsUpdate, this, null);
+	}
+	/**
+	 * Save the data from the table.
+	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param callback - callback executed on save
+	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
+	 */
+	public void save(boolean async, boolean ignoreColumnsUpdate, Callback<Boolean> callback) {
+		getDatabase().save(async, ignoreColumnsUpdate, this, callback);
 	}
 	/**
 	 * You can add this method to your class to override it and do some action, this will be executed when loading the table.

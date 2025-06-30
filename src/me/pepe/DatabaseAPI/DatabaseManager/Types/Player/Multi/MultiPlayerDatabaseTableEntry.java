@@ -22,13 +22,10 @@ public class MultiPlayerDatabaseTableEntry<V extends MultiPlayerDatabaseTable> {
 	public V getDatabase() {
 		return database;
 	}
-	public boolean isNecesarySave() {
-		return necesarySave;
+	public boolean isNecesarySave(boolean useIgnoreColumns) {
+		return necesarySave && !database.isSaved(useIgnoreColumns);
 	}
 	public void setNecesarySave(boolean necesarySave) {
-		if (necesarySave) {
-			database.setSaved(false);
-		}
 		this.necesarySave = necesarySave;
 	}
 }
