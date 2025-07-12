@@ -1071,27 +1071,33 @@ public abstract class Database {
 		//System.out.println(saveStatement);
 		return statement;
 	}
-	public void remove(boolean async, DatabaseTable table) {
+	public void remove(boolean async, DatabaseTable table, Callback<Integer> callback) {
 		if (async) {
 			queue.submit(new Runnable() {
 				@Override
 				public void run() {
-					remove(table);
+					remove(table, callback);
 				}
 			});
 		} else {
-			remove(table);
+			remove(table, callback);
 		}
 	}
-	private void remove(DatabaseTable table) {
+	public void remove(boolean async, DatabaseTable table) {
+		remove(async, table, null);
+	}
+	private void remove(DatabaseTable table, Callback<Integer> callback) {
 		getConnection(new Callback<Connection>() {
 			@Override
 			public void done(Connection connection, Exception exception) {
 				try {
 					PreparedStatement statement = delete(connection, table);
-					statement.executeUpdate();
+					int affected = statement.executeUpdate();
 					statement.close();
 					table.setHasData(false);
+					if (callback != null) {
+						callback.done(affected, exception);
+					}
 				} catch(SQLException ex) {
 					ex.printStackTrace();
 				}
