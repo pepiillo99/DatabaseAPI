@@ -49,6 +49,7 @@ public abstract class DatabaseTable<D extends Database> {
 	}
 	public void reloadLastSave() {
 		this.lastSave = serialize(new HashMap<String, Object>());
+		onSave();
 	}
 	/**
 	 * @return if table is saved
@@ -174,4 +175,8 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param hasData - boolean that tells if the table has data
 	 */
 	public void onLoad(boolean hasData) {}
+	/**
+	 * You can add this method to your class to override it and do some action, this will be executed when save the table.
+	 */
+	public void onSave() {}
 }
