@@ -1019,7 +1019,9 @@ public abstract class Database {
 	private PreparedStatement insert(Connection connection, DatabaseTable table) throws SQLException {
 		String insertStatement = "INSERT INTO " + table.getTableName() + " (";
 		boolean seetedFirstKey = false;
-		if (!table.isAutoIncrement()) {
+		Object keySerialized = table.keySerialize();
+		boolean needBuildKey = !table.isAutoIncrement() || (!table.hasData() && keySerialized instanceof Long && (Long) keySerialized != 0);
+		if (needBuildKey) {
 			seetedFirstKey = true;
 			insertStatement = insertStatement + table.getKeyName();
 		}
@@ -1030,7 +1032,7 @@ public abstract class Database {
 		}
 		seetedFirstKey = false;
 		insertStatement = insertStatement + ") VALUES (";
-		if (!table.isAutoIncrement()) {
+		if (needBuildKey) {
 			seetedFirstKey = true;
 			insertStatement = insertStatement + "?";
 		}
@@ -1041,7 +1043,7 @@ public abstract class Database {
 		insertStatement = insertStatement + ")";
 		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement, Statement.RETURN_GENERATED_KEYS);
 		int statementSize = 1;
-		if (!table.isAutoIncrement()) {
+		if (needBuildKey) {
 			saveInStatement(preparedStatement, table.keySerialize(), statementSize++);
 		}
 		for (Entry<String, Object> save : saveMap.entrySet()) {
