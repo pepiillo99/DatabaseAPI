@@ -248,7 +248,7 @@ public abstract class Database {
 								returnDB.setHasData(true);
 								returnDB.setLoaded();
 								returnDB.deserialize(resultSet);
-								returnDB.reloadLastSave();
+								returnDB.reloadLastSave(false);
 								callback.done(returnDB, null);
 								if (resultSize == 0) {
 									if (onFinish != null) {
@@ -814,7 +814,7 @@ public abstract class Database {
 						}
 						table.setLoaded();
 						table.onLoad(table.hasData());
-						table.reloadLastSave();
+						table.reloadLastSave(false);
 						resultSet.close();
 						statement.close();
 						if (callback != null) {
@@ -886,7 +886,7 @@ public abstract class Database {
 			                }
 						}
 						statement.close();
-						table.reloadLastSave();
+						table.reloadLastSave(true);
 						if (callback != null) {
 							callback.done(true, exception);
 						}

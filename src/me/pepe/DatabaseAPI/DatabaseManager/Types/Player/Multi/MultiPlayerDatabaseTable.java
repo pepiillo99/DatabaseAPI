@@ -108,7 +108,7 @@ public abstract class MultiPlayerDatabaseTable<V extends MultiPlayerDatabaseTabl
 					resultSet.close();
 					statement.close();
 					loaded = true;
-					reloadLastSave();
+					reloadLastSave(false);
 					if (callback != null) {
 						callback.done(thissss, null);
 					}

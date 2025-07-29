@@ -47,9 +47,11 @@ public abstract class DatabaseTable<D extends Database> {
 	public boolean isLoaded() {
 		return loaded;
 	}
-	public void reloadLastSave() {
+	public void reloadLastSave(boolean realSave) {
 		this.lastSave = serialize(new HashMap<String, Object>());
-		onSave();
+		if (realSave) {
+			onSave();
+		}
 	}
 	/**
 	 * @return if table is saved
