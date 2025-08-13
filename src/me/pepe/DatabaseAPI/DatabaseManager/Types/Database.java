@@ -851,7 +851,24 @@ public abstract class Database {
 			}
 		}
 	}
+	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, DatabaseTable table, Callback<Boolean> callback) {
+		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
+			if (async) {
+				queue.submit(new Runnable() {
+					@Override
+					public void run() {
+						save(ignoreOnSave, table, callback);
+					}
+				});
+			} else {
+				save(ignoreOnSave, table, callback);
+			}
+		}
+	}
 	private void save(DatabaseTable table, Callback<Boolean> callback) {
+		save(false, table, callback);
+	}
+	private void save(boolean ignoreOnSave, DatabaseTable table, Callback<Boolean> callback) {
 		if (!table.isSaving()) {
 			table.setSaving(true);
 			getConnection(new Callback<Connection>() {
@@ -886,7 +903,7 @@ public abstract class Database {
 			                }
 						}
 						statement.close();
-						table.reloadLastSave(true);
+						table.reloadLastSave(!ignoreOnSave);
 						if (callback != null) {
 							callback.done(true, exception);
 						}

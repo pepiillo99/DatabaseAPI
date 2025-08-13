@@ -173,6 +173,16 @@ public abstract class DatabaseTable<D extends Database> {
 		getDatabase().save(async, ignoreColumnsUpdate, this, callback);
 	}
 	/**
+	 * Save the data from the table.
+	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param callback - callback executed on save
+	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
+	 * @param ignoreOnSave - whether the save should ignore the method on save
+	 */
+	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, Callback<Boolean> callback) {
+		getDatabase().save(async, ignoreColumnsUpdate, ignoreOnSave, this, callback);
+	}
+	/**
 	 * You can add this method to your class to override it and do some action, this will be executed when loading the table.
 	 * @param hasData - boolean that tells if the table has data
 	 */
