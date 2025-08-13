@@ -166,6 +166,15 @@ public abstract class DatabaseTable<D extends Database> {
 	/**
 	 * Save the data from the table.
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
+	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
+	 * @param ignoreOnSave - whether the save should ignore the method on save
+	 */
+	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave) {
+		getDatabase().save(async, ignoreColumnsUpdate, ignoreOnSave, this, null);
+	}
+	/**
+	 * Save the data from the table.
+	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
 	 * @param callback - callback executed on save
 	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
 	 */
