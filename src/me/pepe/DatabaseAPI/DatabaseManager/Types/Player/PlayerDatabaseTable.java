@@ -7,6 +7,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Multi.MultiPlayerDatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Simple.SimplePlayerDatabaseTable;
 import me.pepe.DatabaseAPI.Utils.Callback;
+import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 
 public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends DatabaseTable {
 	private PlayerData pData;
@@ -45,12 +46,12 @@ public abstract class PlayerDatabaseTable<V extends DatabaseTable> extends Datab
 		}
 	}
 	protected void update(boolean priority) {
-		this.update(priority, new Callback<Boolean>() { // no puedo ponerlo nullo porque entiende que es el metodo del dataname ;(
+		this.update(priority, new Callback<SimpleCallbackRequest>() { // no puedo ponerlo nullo porque entiende que es el metodo del dataname ;(
 			@Override
-			public void done(Boolean result, Exception exception) {}
+			public void done(SimpleCallbackRequest result, Exception exception) {}
 		});
 	}
-	protected void update(boolean priority, Callback<Boolean> callback) {
+	protected void update(boolean priority, Callback<SimpleCallbackRequest> callback) {
 		if (this instanceof SimplePlayerDatabaseTable) {
 			if (priority) {
 				getDatabase().save(true, false, this, callback);

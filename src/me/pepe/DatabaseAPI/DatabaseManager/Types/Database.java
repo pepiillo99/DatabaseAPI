@@ -28,6 +28,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Multi.MultiPlayerDatabas
 import me.pepe.DatabaseAPI.Utils.Callback;
 import me.pepe.DatabaseAPI.Utils.DatabaseConfiguration;
 import me.pepe.DatabaseAPI.Utils.MySQLConnection;
+import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 
 public abstract class Database {
 	private String name;
@@ -639,19 +640,15 @@ public abstract class Database {
 		getConnection(new Callback<Connection>() {
 			@Override
 			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = connection.prepareStatement("SELECT COUNT(" + column + ") AS result FROM " + table.getTableName());
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getInt("result"), exception);
-					} else {
-						callback.done(0, exception);
-					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					callback.done(-1, e);
+				if (async) {
+					queue.submit(new Runnable() {
+						@Override
+						public void run() {
+							getCountOfTable(connection, exception, clase, null, column, callback);
+						}
+					});
+				} else {
+					getCountOfTable(connection, exception, clase, null, column, callback);
 				}
 			}			
 		});
@@ -660,22 +657,39 @@ public abstract class Database {
 		getConnection(new Callback<Connection>() {
 			@Override
 			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getInt("result"), exception);
-					} else {
-						callback.done(0, exception);
-					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					callback.done(-1, e);
+				if (async) {
+					queue.submit(new Runnable() {
+						@Override
+						public void run() {
+							getCountOfTable(connection, exception, clase, keys, column, callback);
+						}
+					});
+				} else {
+					getCountOfTable(connection, exception, clase, keys, column, callback);
 				}
 			}			
 		});
+	}
+	private void getCountOfTable(Connection connection, Exception ex, Class<? extends DatabaseTable> clase, HashMap<String, Object> keys, String column, Callback<Integer> callback) {
+		try {
+			DatabaseTable table = tableInstances.get(clase).newInstance(null);
+			PreparedStatement statement = null;
+			if (keys == null) {
+				statement = connection.prepareStatement("SELECT COUNT(" + column + ") AS result FROM " + table.getTableName());
+			} else {
+				statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
+			}
+			ResultSet result = statement.executeQuery();
+			if (result.next()) {
+				callback.done(result.getInt("result"), ex);
+			} else {
+				callback.done(0, ex);
+			}
+			result.close();
+			statement.close();
+		} catch (SQLException e) {
+			callback.done(-1, e);
+		}
 	}
 	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
 		if (tableInstances.containsKey(clase)) {
@@ -837,7 +851,7 @@ public abstract class Database {
 	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table) {
 		save(async, ignoreColumnsUpdate, table, null);
 	}
-	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table, Callback<Boolean> callback) {
+	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
 		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
 			if (async) {
 				queue.submit(new Runnable() {
@@ -851,7 +865,7 @@ public abstract class Database {
 			}
 		}
 	}
-	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, DatabaseTable table, Callback<Boolean> callback) {
+	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
 		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
 			if (async) {
 				queue.submit(new Runnable() {
@@ -865,10 +879,10 @@ public abstract class Database {
 			}
 		}
 	}
-	private void save(DatabaseTable table, Callback<Boolean> callback) {
+	private void save(DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
 		save(false, table, callback);
 	}
-	private void save(boolean ignoreOnSave, DatabaseTable table, Callback<Boolean> callback) {
+	private void save(boolean ignoreOnSave, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
 		if (!table.isSaving()) {
 			table.setSaving(true);
 			getConnection(new Callback<Connection>() {
@@ -905,9 +919,12 @@ public abstract class Database {
 						statement.close();
 						table.reloadLastSave(!ignoreOnSave);
 						if (callback != null) {
-							callback.done(true, exception);
+							callback.done(new SimpleCallbackRequest(), exception);
 						}
 					} catch(SQLException ex) {
+						if (callback != null) {
+							callback.done(new SimpleCallbackRequest(ex.getMessage()), exception);
+						}
 						ex.printStackTrace();
 					} finally {
 						table.setSaving(false);

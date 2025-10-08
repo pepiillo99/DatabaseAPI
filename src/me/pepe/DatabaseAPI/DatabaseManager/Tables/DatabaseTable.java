@@ -9,6 +9,7 @@ import java.util.List;
 import me.pepe.DatabaseAPI.DatabaseManager.DatabaseKeyType;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.Utils.Callback;
+import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 
 public abstract class DatabaseTable<D extends Database> {
 	private String name;
@@ -152,7 +153,7 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param async - boolean that defines whether to use the method asynchromatically (being able to continue the process without interruption)
 	 * @param callback - callback executed on save
 	 */
-	public void save(boolean async, Callback<Boolean> callback) {
+	public void save(boolean async, Callback<SimpleCallbackRequest> callback) {
 		getDatabase().save(async, true, this, callback);
 	}
 	/**
@@ -178,7 +179,7 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param callback - callback executed on save
 	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
 	 */
-	public void save(boolean async, boolean ignoreColumnsUpdate, Callback<Boolean> callback) {
+	public void save(boolean async, boolean ignoreColumnsUpdate, Callback<SimpleCallbackRequest> callback) {
 		getDatabase().save(async, ignoreColumnsUpdate, this, callback);
 	}
 	/**
@@ -188,7 +189,7 @@ public abstract class DatabaseTable<D extends Database> {
 	 * @param ignoreColumnsUpdate - whether the save should ignore columns marked to ignore on update
 	 * @param ignoreOnSave - whether the save should ignore the method on save
 	 */
-	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, Callback<Boolean> callback) {
+	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, Callback<SimpleCallbackRequest> callback) {
 		getDatabase().save(async, ignoreColumnsUpdate, ignoreOnSave, this, callback);
 	}
 	/**
