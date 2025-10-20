@@ -26,6 +26,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.PlayerDatabaseTable;
 import me.pepe.DatabaseAPI.DatabaseManager.Types.Player.Multi.MultiPlayerDatabaseTable;
 import me.pepe.DatabaseAPI.Utils.Callback;
+import me.pepe.DatabaseAPI.Utils.CallbackRequest;
 import me.pepe.DatabaseAPI.Utils.DatabaseConfiguration;
 import me.pepe.DatabaseAPI.Utils.MySQLConnection;
 import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
@@ -172,7 +173,7 @@ public abstract class Database {
 			}
 		}
 	}
-	public void getAllTables(Class<? extends DatabaseTable> clase, Callback<DatabaseTable> callback, Callback<Boolean> onFinish) {
+	public void getAllTables(Class<? extends DatabaseTable> clase, Callback<DatabaseTable> callback, Callback<CallbackRequest<Boolean>> onFinish) {
 		if (tableInstances.containsKey(clase)) {
 			DatabaseTable table = tableInstances.get(clase).newInstance(null);
 			if (table instanceof TableDatabaseMultiKeys) {
@@ -194,13 +195,13 @@ public abstract class Database {
 										callback.done(returnDB, null);
 										if (resultSize == 0) {
 											if (onFinish != null) {
-												onFinish.done(resultSize != 0, null);
+												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 											}
 											break;
 										}
 									}
 									if (onFinish != null) {
-										onFinish.done(resultSize != 0, null);
+										onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 									}
 								} else { // aqui coge el ultimo size y lo va restando
 									result.last();
@@ -208,7 +209,7 @@ public abstract class Database {
 									result.beforeFirst();
 									if (resultSize == 0) {
 										if (onFinish != null) {
-											onFinish.done(resultSize != 0, null);
+											onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 										}
 									}
 									while (result.next()) {
@@ -218,7 +219,7 @@ public abstract class Database {
 										callback.done(returnDB, null);
 										if (resultSize == 0) {
 											if (onFinish != null) {
-												onFinish.done(resultSize != 0, null);
+												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 											}
 											break;
 										}
@@ -253,13 +254,13 @@ public abstract class Database {
 								callback.done(returnDB, null);
 								if (resultSize == 0) {
 									if (onFinish != null) {
-										onFinish.done(resultSize != 0, null);
+										onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 									}
 									break;
 								}
 							}
 							if (onFinish != null) {
-								onFinish.done(resultSize != 0, null);
+								onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 							}
 							resultSet.close();
 							statement.close();
@@ -275,6 +276,7 @@ public abstract class Database {
 							}
 							System.err.println("Error: " + errorMessage);
 							callback.done(table, e);
+							onFinish.done(new CallbackRequest<Boolean>(false, e.getMessage()), e);
 						}
 					}				
 				});
@@ -320,10 +322,10 @@ public abstract class Database {
 	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
 		getTable(clase, keys, async, callback, notFinded, null);
 	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<Boolean> onFinish) {
+	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
 		getTable(clase, keys, true, callback, notFinded, onFinish);
 	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<Boolean> onFinish) {
+	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
 		if (tableInstances.containsKey(clase)) {
 			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
 			if (newTable instanceof TableDatabaseMultiKeys) {
@@ -358,7 +360,7 @@ public abstract class Database {
 											callback.done(returnDB, null);
 											if (resultSize == 0) {
 												if (onFinish != null) {
-													onFinish.done(resultSize != 0, null);
+													onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 												}
 												break;
 											}
@@ -367,7 +369,7 @@ public abstract class Database {
 											notFinded.done(keys, null);
 										}
 										if (onFinish != null) {
-											onFinish.done(resultSize != 0, null);
+											onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 										}
 									} else { // aqui coge el ultimo size y lo va restando
 										result.last();
@@ -376,7 +378,7 @@ public abstract class Database {
 										if (resultSize == 0) {
 											notFinded.done(keys, null);
 											if (onFinish != null) {
-												onFinish.done(resultSize != 0, null);
+												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 											}
 										}
 										while (result.next()) {
@@ -386,7 +388,7 @@ public abstract class Database {
 											callback.done(returnDB, null);
 											if (resultSize == 0) {
 												if (onFinish != null) {
-													onFinish.done(resultSize != 0, null);
+													onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
 												}
 												break;
 											}
@@ -404,12 +406,15 @@ public abstract class Database {
 					});
 				} else {
 					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
+					onFinish.done(new CallbackRequest<Boolean>(false, "[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys), null);					
 				}
 			} else {
 				System.err.println("[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
+				onFinish.done(new CallbackRequest<Boolean>(false, "[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey..."), null);					
 			}
 		} else {
 			System.err.println("This database " + clase.getName() + " is not registred");
+			onFinish.done(new CallbackRequest<Boolean>(false, "This database " + clase.getName() + " is not registred"), null);					
 		}
 	}
 	public void getTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
