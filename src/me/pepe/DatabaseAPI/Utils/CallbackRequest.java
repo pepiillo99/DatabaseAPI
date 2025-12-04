@@ -11,6 +11,7 @@ public class CallbackRequest<T> {
 		this.error = error;
 	}
 	public CallbackRequest(T result, String error) {
+		this.result = result;
 		this.error = error;
 	}
 	public boolean hasResult() {
