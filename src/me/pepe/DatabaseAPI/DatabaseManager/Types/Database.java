@@ -326,6 +326,9 @@ public abstract class Database {
 		getTable(clase, keys, true, callback, notFinded, onFinish);
 	}
 	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
+		getTable(clase, keys, async, callback, notFinded, onFinish, 0, 0);
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset) {
 		if (tableInstances.containsKey(clase)) {
 			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
 			if (newTable instanceof TableDatabaseMultiKeys) {
@@ -345,7 +348,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception ex) {
 							if (ex == null) {
 								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection);
+									PreparedStatement statement = prepareStatement(db, keys, connection, limit, offset);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -716,7 +719,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception exception) {
 							if (exception == null) {
 								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection, true);
+									PreparedStatement statement = prepareStatement(db, keys, connection, 1);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -744,15 +747,18 @@ public abstract class Database {
 		}
 	}
 	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement("*", table, keys, connection, false);
+		return prepareStatement("*", table, keys, connection, 0, 0);
 	}
-	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, boolean limit) throws SQLException {
-		return prepareStatement("*", table, keys, connection, limit);
+	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit) throws SQLException {
+		return prepareStatement("*", table, keys, connection, limit, 0);
+	}
+	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset) throws SQLException {
+		return prepareStatement("*", table, keys, connection, limit, offset);
 	}
 	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement(selectQuery, table, keys, connection, false);
+		return prepareStatement(selectQuery, table, keys, connection, 0, 0);
 	}
-	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, boolean limit) throws SQLException {
+	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset) throws SQLException {
 		String select = "SELECT " + selectQuery + " FROM " + table.getTableName() + " WHERE ";
 		boolean first = true;
 		for (Entry<String, Object> key : keys.entrySet()) {
@@ -776,8 +782,11 @@ public abstract class Database {
 				select += key.getKey() + " =?";
 			}
 		}
-		if (limit) {
-			select += " LIMIT 1";
+		if (limit != 0) {
+			select += " LIMIT " + limit;
+		}
+		if (offset != 0) {
+			select += " OFFSET " + offset;
 		}
 		PreparedStatement statement = connection.prepareStatement(select);
 		int statementSize = 1;
