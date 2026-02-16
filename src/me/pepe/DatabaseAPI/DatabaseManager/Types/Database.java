@@ -328,7 +328,13 @@ public abstract class Database {
 	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
 		getTable(clase, keys, async, callback, notFinded, onFinish, 0, 0);
 	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit) {
+		getTable(clase, keys, async, callback, notFinded, onFinish, limit, 0);
+	}
 	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset) {
+		getTable(clase, keys, async, callback, notFinded, onFinish, limit, offset, "");
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset, String orderby) {
 		if (tableInstances.containsKey(clase)) {
 			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
 			if (newTable instanceof TableDatabaseMultiKeys) {
@@ -348,7 +354,7 @@ public abstract class Database {
 						public void done(Connection connection, Exception ex) {
 							if (ex == null) {
 								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection, limit, offset);
+									PreparedStatement statement = prepareStatement(db, keys, connection, limit, offset, orderby);
 									int statementSize = 1;
 									for (Entry<String, Object> key : keys.entrySet()) {
 										saveInStatement(statement, key.getValue(), statementSize++);
@@ -747,18 +753,18 @@ public abstract class Database {
 		}
 	}
 	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement("*", table, keys, connection, 0, 0);
+		return prepareStatement("*", table, keys, connection, 0, 0, "");
 	}
 	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit) throws SQLException {
-		return prepareStatement("*", table, keys, connection, limit, 0);
+		return prepareStatement("*", table, keys, connection, limit, 0, "");
 	}
-	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset) throws SQLException {
-		return prepareStatement("*", table, keys, connection, limit, offset);
+	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset, String orderBy) throws SQLException {
+		return prepareStatement("*", table, keys, connection, limit, offset, orderBy);
 	}
 	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement(selectQuery, table, keys, connection, 0, 0);
+		return prepareStatement(selectQuery, table, keys, connection, 0, 0, "");
 	}
-	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset) throws SQLException {
+	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset, String orderBy) throws SQLException {
 		String select = "SELECT " + selectQuery + " FROM " + table.getTableName() + " WHERE ";
 		boolean first = true;
 		for (Entry<String, Object> key : keys.entrySet()) {
@@ -787,6 +793,9 @@ public abstract class Database {
 		}
 		if (offset != 0) {
 			select += " OFFSET " + offset;
+		}
+		if (!orderBy.isEmpty()) {
+			select += " ORDER BY " + orderBy;
 		}
 		PreparedStatement statement = connection.prepareStatement(select);
 		int statementSize = 1;
