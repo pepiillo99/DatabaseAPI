@@ -788,14 +788,14 @@ public abstract class Database {
 				select += key.getKey() + " =?";
 			}
 		}
+		if (!orderBy.isEmpty()) {
+			select += " ORDER BY " + orderBy;
+		}
 		if (limit != 0) {
 			select += " LIMIT " + limit;
 		}
 		if (offset != 0) {
 			select += " OFFSET " + offset;
-		}
-		if (!orderBy.isEmpty()) {
-			select += " ORDER BY " + orderBy;
 		}
 		PreparedStatement statement = connection.prepareStatement(select);
 		int statementSize = 1;
