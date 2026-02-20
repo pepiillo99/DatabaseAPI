@@ -329,6 +329,12 @@ public class DatabaseManager {
 			}
 		}
 	}
+	public boolean hasTemporalyDatabase(String databaseName) {
+		return temporalyDatabases.containsKey(databaseName);
+	}
+	public Database getTemporalyDatabase(String databaseName) {
+		return temporalyDatabases.get(databaseName);
+	}
 	public void registerTemporalyDatabase(Database database) {
 		if (!temporalyDatabases.containsKey(database.getDatabaseName())) {
 			temporalyDatabases.put(database.getDatabaseName(), database);

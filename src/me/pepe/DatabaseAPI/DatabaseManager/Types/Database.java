@@ -483,226 +483,273 @@ public abstract class Database {
 		}
 	}
 	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = connection.prepareStatement("SELECT MAX(" + column + ") AS result FROM " + table.getTableName());
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getObject("result"), exception);
-					} else {
-						callback.done(null, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = connection.prepareStatement("SELECT MAX(" + column + ") AS result FROM " + table.getTableName());
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getObject("result"), exception);
+						} else {
+							callback.done(null, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = prepareStatement("MAX(" + column + ") AS result", table, keys, connection);
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getObject("result"), exception);
-					} else {
-						callback.done(null, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = prepareStatement("MAX(" + column + ") AS result", table, keys, connection);
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getObject("result"), exception);
+						} else {
+							callback.done(null, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = connection.prepareStatement("SELECT MIN(" + column + ") AS result FROM " + table.getTableName());
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getObject("result"), exception);
-					} else {
-						callback.done(null, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = connection.prepareStatement("SELECT MIN(" + column + ") AS result FROM " + table.getTableName());
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getObject("result"), exception);
+						} else {
+							callback.done(null, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = prepareStatement("MIN(" + column + ") AS result", table, keys, connection);
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getObject("result"), exception);
-					} else {
-						callback.done(null, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = prepareStatement("MIN(" + column + ") AS result", table, keys, connection);
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getObject("result"), exception);
+						} else {
+							callback.done(null, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Double> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = connection.prepareStatement("SELECT AVG(" + column + ") AS result FROM " + table.getTableName());
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getDouble("result"), exception);
-					} else {
-						callback.done(0D, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = connection.prepareStatement("SELECT AVG(" + column + ") AS result FROM " + table.getTableName());
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getDouble("result"), exception);
+						} else {
+							callback.done(0D, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Double> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = prepareStatement("AVG(" + column + ") AS result", table, keys, connection);
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getDouble("result"), exception);
-					} else {
-						callback.done(0D, exception);
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = prepareStatement("AVG(" + column + ") AS result", table, keys, connection);
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getDouble("result"), exception);
+						} else {
+							callback.done(0D, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = connection.prepareStatement("SELECT SUM(" + column + ") AS result FROM " + table.getTableName());
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getInt("result"), exception);
-					} else {
-						callback.done(0, exception);
+		if (tableInstances.containsKey(clase)) {
+
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = connection.prepareStatement("SELECT SUM(" + column + ") AS result FROM " + table.getTableName());
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getInt("result"), exception);
+						} else {
+							callback.done(0, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					DatabaseTable table = tableInstances.get(clase).newInstance(null);
-					PreparedStatement statement = prepareStatement("SUM(" + column + ") AS result", table, keys, connection);
-					ResultSet result = statement.executeQuery();
-					if (result.next()) {
-						callback.done(result.getInt("result"), exception);
-					} else {
-						callback.done(0, exception);
+		if (tableInstances.containsKey(clase)) {
+
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					try {
+						DatabaseTable table = tableInstances.get(clase).newInstance(null);
+						PreparedStatement statement = prepareStatement("SUM(" + column + ") AS result", table, keys, connection);
+						ResultSet result = statement.executeQuery();
+						if (result.next()) {
+							callback.done(result.getInt("result"), exception);
+						} else {
+							callback.done(0, exception);
+						}
+						result.close();
+						statement.close();
+					} catch (SQLException e) {
+						e.printStackTrace();
 					}
-					result.close();
-					statement.close();
-				} catch (SQLException e) {
-					e.printStackTrace();
-				}
-			}			
-		});
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				if (async) {
-					queue.submit(new Runnable() {
-						@Override
-						public void run() {
-							getCountOfTable(connection, exception, clase, null, column, callback);
-						}
-					});
-				} else {
-					getCountOfTable(connection, exception, clase, null, column, callback);
-				}
-			}			
-		});
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					if (async) {
+						queue.submit(new Runnable() {
+							@Override
+							public void run() {
+								getCountOfTable(connection, exception, clase, null, column, callback);
+							}
+						});
+					} else {
+						getCountOfTable(connection, exception, clase, null, column, callback);
+					}
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				if (async) {
-					queue.submit(new Runnable() {
-						@Override
-						public void run() {
-							getCountOfTable(connection, exception, clase, keys, column, callback);
-						}
-					});
-				} else {
-					getCountOfTable(connection, exception, clase, keys, column, callback);
-				}
-			}			
-		});
+		if (tableInstances.containsKey(clase)) {
+			getConnection(new Callback<Connection>() {
+				@Override
+				public void done(Connection connection, Exception exception) {
+					if (async) {
+						queue.submit(new Runnable() {
+							@Override
+							public void run() {
+								getCountOfTable(connection, exception, clase, keys, column, callback);
+							}
+						});
+					} else {
+						getCountOfTable(connection, exception, clase, keys, column, callback);
+					}
+				}			
+			});
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
+		}
 	}
 	private void getCountOfTable(Connection connection, Exception ex, Class<? extends DatabaseTable> clase, HashMap<String, Object> keys, String column, Callback<Integer> callback) {
-		try {
-			DatabaseTable table = tableInstances.get(clase).newInstance(null);
-			PreparedStatement statement = null;
-			if (keys == null) {
-				statement = connection.prepareStatement("SELECT COUNT(" + column + ") AS result FROM " + table.getTableName());
-			} else {
-				statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
+		if (tableInstances.containsKey(clase)) {
+			try {
+				DatabaseTable table = tableInstances.get(clase).newInstance(null);
+				PreparedStatement statement = null;
+				if (keys == null) {
+					statement = connection.prepareStatement("SELECT COUNT(" + column + ") AS result FROM " + table.getTableName());
+				} else {
+					statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
+				}
+				System.out.println("Contando de la tabla" + table.getTableName());
+				ResultSet result = statement.executeQuery();
+				if (result.next()) {
+					callback.done(result.getInt("result"), ex);
+				} else {
+					callback.done(0, ex);
+				}
+				result.close();
+				statement.close();
+			} catch (Exception e) {
+				callback.done(-1, e);
 			}
-			ResultSet result = statement.executeQuery();
-			if (result.next()) {
-				callback.done(result.getInt("result"), ex);
-			} else {
-				callback.done(0, ex);
-			}
-			result.close();
-			statement.close();
-		} catch (SQLException e) {
-			callback.done(-1, e);
+		} else {
+			System.err.println("This database " + clase.getName() + " is not registred");
 		}
 	}
 	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
