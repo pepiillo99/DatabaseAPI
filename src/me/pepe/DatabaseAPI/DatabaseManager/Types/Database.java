@@ -422,7 +422,7 @@ public abstract class Database {
 				onFinish.done(new CallbackRequest<Boolean>(false, "[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey..."), null);					
 			}
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 			onFinish.done(new CallbackRequest<Boolean>(false, "This database " + clase.getName() + " is not registred"), null);					
 		}
 	}
@@ -479,7 +479,7 @@ public abstract class Database {
 				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
 			}
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
@@ -504,7 +504,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
@@ -529,7 +529,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
@@ -554,7 +554,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
@@ -579,7 +579,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Double> callback) {
@@ -604,7 +604,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Double> callback) {
@@ -629,7 +629,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
@@ -655,7 +655,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
@@ -681,7 +681,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
@@ -702,7 +702,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
@@ -723,7 +723,7 @@ public abstract class Database {
 				}			
 			});
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	private void getCountOfTable(Connection connection, Exception ex, Class<? extends DatabaseTable> clase, HashMap<String, Object> keys, String column, Callback<Integer> callback) {
@@ -736,7 +736,6 @@ public abstract class Database {
 				} else {
 					statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
 				}
-				System.out.println("Contando de la tabla" + table.getTableName());
 				ResultSet result = statement.executeQuery();
 				if (result.next()) {
 					callback.done(result.getInt("result"), ex);
@@ -749,7 +748,7 @@ public abstract class Database {
 				callback.done(-1, e);
 			}
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
@@ -796,7 +795,7 @@ public abstract class Database {
 				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
 			}
 		} else {
-			System.err.println("This database " + clase.getName() + " is not registred");
+			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
 		}
 	}
 	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
