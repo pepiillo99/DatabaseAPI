@@ -932,6 +932,10 @@ public abstract class Database {
 			} else {
 				save(table, callback);
 			}
+		} else {
+			if (table.isSaved(ignoreColumnsUpdate)) {
+				callback.done(new SimpleCallbackRequest(), null);
+			}
 		}
 	}
 	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
@@ -945,6 +949,10 @@ public abstract class Database {
 				});
 			} else {
 				save(ignoreOnSave, table, callback);
+			}
+		} else {
+			if (table.isSaved(ignoreColumnsUpdate)) {
+				callback.done(new SimpleCallbackRequest(), null);
 			}
 		}
 	}

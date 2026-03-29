@@ -7,7 +7,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Tables.DatabaseTable;
 
 public abstract class DatabaseTableInstance<K> {
 	private List<String> errors = new ArrayList<String>();
-	public abstract DatabaseTable<?> newInstance(K key);
+	public abstract DatabaseTable newInstance(K key);
 	/**
 	 * You can check if table has errors
 	 * @return if table has error

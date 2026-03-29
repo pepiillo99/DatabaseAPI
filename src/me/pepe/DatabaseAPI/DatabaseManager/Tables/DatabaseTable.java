@@ -11,7 +11,7 @@ import me.pepe.DatabaseAPI.DatabaseManager.Types.Database;
 import me.pepe.DatabaseAPI.Utils.Callback;
 import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 
-public abstract class DatabaseTable<D extends Database> {
+public abstract class DatabaseTable {
 	private String name;
 	private String keyName;
 	private DatabaseKeyType keyType;
