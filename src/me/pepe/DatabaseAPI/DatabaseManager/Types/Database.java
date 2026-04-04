@@ -933,7 +933,7 @@ public abstract class Database {
 				save(table, callback);
 			}
 		} else {
-			if (table.isSaved(ignoreColumnsUpdate)) {
+			if (table.isSaved(ignoreColumnsUpdate) && callback != null) {
 				callback.done(new SimpleCallbackRequest(), null);
 			}
 		}
