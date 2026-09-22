@@ -19,5 +19,6 @@ public abstract class TableDatabaseMultiKeys extends DatabaseTable {
 		hasData = true;
 		buildDatabase(result);
 		reloadLastSave(false);
+		onLoad(hasData);
 	}
 }
