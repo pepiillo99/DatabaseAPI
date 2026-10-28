@@ -3,6 +3,7 @@ package me.pepe.DatabaseAPI.Utils;
 public class CallbackRequest<T> {
 	private T result;
 	private String error;
+	private Exception exception;
 	public CallbackRequest() {}
 	public CallbackRequest(T result) {
 		this.result = result;
@@ -14,6 +15,11 @@ public class CallbackRequest<T> {
 		this.result = result;
 		this.error = error;
 	}
+	public CallbackRequest(T result, Exception ex) {
+		this.result = result;
+		this.error = ex.getMessage();
+		this.exception = ex;
+	}
 	public boolean hasResult() {
 		return result != null;
 	}
@@ -24,9 +30,15 @@ public class CallbackRequest<T> {
 		return !hasError();
 	}
 	public boolean hasError() {
-		return error != null && !error.isEmpty();
+		return (error != null && !error.isEmpty()) || hasException();
+	}
+	public boolean hasException() {
+		return exception != null;
 	}
 	public String getError() {
 		return error;
+	}
+	public Exception getException() {
+		return exception;
 	}
 }
