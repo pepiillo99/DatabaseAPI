@@ -20,6 +20,10 @@ public class CallbackRequest<T> {
 		this.error = ex.getMessage();
 		this.exception = ex;
 	}
+	public CallbackRequest(Exception ex) {
+		this.error = ex.getMessage();
+		this.exception = ex;
+	}
 	public boolean hasResult() {
 		return result != null;
 	}
