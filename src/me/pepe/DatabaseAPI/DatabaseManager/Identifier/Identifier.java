@@ -21,21 +21,20 @@ public class Identifier extends TableDatabaseMultiKeys {
 		return identifier;
 	}
 	@Override
-	public HashMap<String, Object> serialize(HashMap mapp) {
-		HashMap<String, Object> map = mapp;
+	public HashMap<String, Object> serialize(HashMap<String, Object> map) {
 		map.put("name", name);
 		map.put("uuid", uuid);
 		return map;
 	}
 	@Override
 	public void deserialize(ResultSet result) throws SQLException {
-		identifier = result.getInt("Identifiers");
+		identifier = result.getLong("Identifiers");
 		name = result.getString("name");
 		uuid = UUID.fromString(result.getString("uuid"));
 	}
 	@Override
 	public void buildDatabase(ResultSet result) throws SQLException {
-		identifier = result.getInt("Identifiers");
+		identifier = result.getLong("Identifiers");
 		name = result.getString("name");
 		uuid = UUID.fromString(result.getString("uuid"));
 	}

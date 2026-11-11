@@ -15,9 +15,9 @@ public abstract class DatabaseTable {
 	private String name;
 	private String keyName;
 	private DatabaseKeyType keyType;
-	protected boolean loaded = false;
-	protected boolean hasData = false;
-	private boolean saving = false; // si la tabla actualmente está en proceso de guardado
+	protected volatile boolean loaded = false;
+	protected volatile boolean hasData = false;
+	private volatile boolean saving = false; // Indica si existe un guardado en curso.
 	private boolean autoIncrement = false;
 	private boolean hasPrimaryKey = true;
 	private Database database;
@@ -49,7 +49,12 @@ public abstract class DatabaseTable {
 		return loaded;
 	}
 	public void reloadLastSave(boolean realSave) {
-		this.lastSave = serialize(new HashMap<String, Object>());
+		reloadLastSave(serialize(new HashMap<String, Object>()), realSave);
+	}
+	public void reloadLastSave(HashMap<String, Object> savedData, boolean realSave) {
+		synchronized (this) {
+			this.lastSave = new HashMap<String, Object>(savedData);
+		}
 		if (realSave) {
 			onSave();
 		}
@@ -57,8 +62,8 @@ public abstract class DatabaseTable {
 	/**
 	 * @return if table is saved
 	 */
-	public boolean isSaved(boolean ignoreColumnsUpdate) {
-		if (lastSave != null) {
+	public synchronized boolean isSaved(boolean ignoreColumnsUpdate) {
+		if (hasData && lastSave != null) {
 			HashMap<String, Object> currentData = serialize(new HashMap<String, Object>());
 			if (ignoreColumnsUpdate) {
 				HashMap<String, Object> currentLastSave = (HashMap<String, Object>) lastSave.clone();

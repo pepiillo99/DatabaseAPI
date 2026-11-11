@@ -6,4 +6,7 @@
 target/DatabaseAPI-1.0.jar
 .project
 .classpath
+/test/
+/src/test/
+/target/
 target/classes/META-INF/maven/DatabaseAPI/DatabaseAPI/pom.xml

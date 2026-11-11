@@ -2,6 +2,13 @@ package me.pepe.DatabaseAPI.DatabaseManager.Types;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.Locale;
+import java.util.concurrent.Future;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ConcurrentHashMap;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -9,6 +16,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,9 +42,25 @@ import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 public abstract class Database {
 	private String name;
 	private boolean temporaly = false;
-	private HashMap<Class<? extends DatabaseTable>, DatabaseTableInstance> tableInstances = new HashMap<Class<? extends DatabaseTable>, DatabaseTableInstance>();
+	private final ConcurrentHashMap<Class<? extends DatabaseTable>, DatabaseTableInstance> tableInstances = new ConcurrentHashMap<Class<? extends DatabaseTable>, DatabaseTableInstance>();
 	private boolean obligatorySQLite = false;
-	private ExecutorService queue = Executors.newSingleThreadExecutor();
+	private final Object connectionLock = new Object();
+	private final Object lifecycleLock = new Object();
+	private volatile Thread queueThread;
+	private volatile boolean closing;
+	private volatile boolean closed;
+	private volatile SQLException closeError;
+	private Future<?> closingTask;
+	private int activeOperations;
+	private final ThreadLocal<Integer> operationDepth = new ThreadLocal<Integer>();
+	private final ExecutorService queue = Executors.newSingleThreadExecutor(new ThreadFactory() {
+		@Override
+		public Thread newThread(Runnable task) {
+			Thread thread = new Thread(task, "DatabaseAPI-" + getDatabaseName());
+			queueThread = thread;
+			return thread;
+		}
+	});
 	private List<String> noSaveTable = new ArrayList<String>();
 	private Connection sqlConnection;
 	private MySQLConnection mysqlConnection;
@@ -135,10 +159,26 @@ public abstract class Database {
 		return temporaly;
 	}
 	public void getConnection(Callback<Connection> callback) {
-		if (DatabaseAPI.getInstance().getConfiguration().isSQL() || isObligatorySQLite()) {
-			callback.done(sqlConnection, null);
-		} else {
-			mysqlConnection.getConnection(callback);
+		synchronized (connectionLock) {
+			if (closed) {
+				notifyCallback(callback, null, new SQLException("La base de datos está cerrada"));
+				return;
+			}
+			if (isSQLite()) {
+				try {
+					if (sqlConnection == null || sqlConnection.isClosed()) {
+						notifyCallback(callback, null, new SQLException("La conexión SQLite no está disponible"));
+					} else {
+						notifyCallback(callback, sqlConnection, null);
+					}
+				} catch (SQLException exception) {
+					notifyCallback(callback, null, exception);
+				}
+			} else if (mysqlConnection == null) {
+				notifyCallback(callback, null, new SQLException("La conexión MariaDB no está preparada"));
+			} else {
+				mysqlConnection.getConnection(callback);
+			}
 		}
 	}
 	public boolean hasTable(Class<? extends DatabaseTable> clase) {
@@ -173,842 +213,264 @@ public abstract class Database {
 			}
 		}
 	}
-	public void getAllTables(Class<? extends DatabaseTable> clase, Callback<DatabaseTable> callback, Callback<CallbackRequest<Boolean>> onFinish) {
-		if (tableInstances.containsKey(clase)) {
-			DatabaseTable table = tableInstances.get(clase).newInstance(null);
+	public void getAllTables(Class<? extends DatabaseTable> type, final Callback<DatabaseTable> callback,
+			final Callback<CallbackRequest<Boolean>> onFinish) {
+		queryTables(type, null, false, new Callback<TableDatabaseMultiKeys>() {
+			@Override
+			public void done(TableDatabaseMultiKeys table, Exception exception) {
+				notifyCallback(callback, table, exception);
+			}
+		}, null, onFinish, 0, 0, "", callback);
+	}
+	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> type, Callback<DatabaseTable> callback) {
+		newTableDatabaseMultiKeysEntry(type, callback, false);
+	}
+	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> type, Callback<DatabaseTable> callback, boolean async) {
+		getTable(type, 0L, async, callback);
+	}
+	public void getTable(Class<? extends DatabaseTable> type, Object key, Callback<DatabaseTable> callback) {
+		getTable(type, key, true, callback);
+	}
+	public void getTable(Class<? extends DatabaseTable> type, Object key, boolean async, Callback<DatabaseTable> callback) {
+		DatabaseTable table;
+		try {
+			table = newTable(type, key);
 			if (table instanceof TableDatabaseMultiKeys) {
-				TableDatabaseMultiKeys db = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(null);
-				getConnection(new Callback<Connection>() {
-					@Override
-					public void done(Connection connection, Exception ex) {
-						if (ex == null) {
-							try {
-								String select = "SELECT * FROM " + db.getTableName();
-								PreparedStatement statement = connection.prepareStatement(select);
-								ResultSet result = statement.executeQuery();
-								if (DatabaseAPI.getInstance().getConfiguration().isSQL() || isObligatorySQLite()) { // si es sql suma el size y al finalizar si es 0 se entiende que no hay entries
-									int resultSize = 0;
-									while (result.next()) {
-										resultSize++;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
-										returnDB.load(result);
-										callback.done(returnDB, null);
-										if (resultSize == 0) {
-											if (onFinish != null) {
-												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-											}
-											break;
-										}
-									}
-									if (onFinish != null) {
-										onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-									}
-								} else { // aqui coge el ultimo size y lo va restando
-									result.last();
-									int resultSize = result.getRow();
-									result.beforeFirst();
-									if (resultSize == 0) {
-										if (onFinish != null) {
-											onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-										}
-									}
-									while (result.next()) {
-										resultSize--;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
-										returnDB.load(result);
-										callback.done(returnDB, null);
-										if (resultSize == 0) {
-											if (onFinish != null) {
-												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-											}
-											break;
-										}
-									}
-								}
-								result.close();
-								statement.close();
-							} catch (SQLException ex1) {
-								ex1.printStackTrace();
-							}
+				((TableDatabaseMultiKeys) table).buildKey(((Number) key).longValue());
+			}
+		} catch (Exception exception) {
+			notifyCallback(callback, null, exception);
+			return;
+		}
+		load(async, table, callback);
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound) {
+		getTable(type, keys, true, callback, notFound, null);
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys, boolean async,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound) {
+		getTable(type, keys, async, callback, notFound, null);
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound,
+			Callback<CallbackRequest<Boolean>> onFinish) {
+		getTable(type, keys, true, callback, notFound, onFinish);
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys, boolean async,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound,
+			Callback<CallbackRequest<Boolean>> onFinish) {
+		getTable(type, keys, async, callback, notFound, onFinish, 0, 0, "");
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys, boolean async,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound,
+			Callback<CallbackRequest<Boolean>> onFinish, int limit) {
+		getTable(type, keys, async, callback, notFound, onFinish, limit, 0, "");
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys, boolean async,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound,
+			Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset) {
+		getTable(type, keys, async, callback, notFound, onFinish, limit, offset, "");
+	}
+	public void getTable(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys, boolean async,
+			Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound,
+			Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset, String orderBy) {
+		queryTables(type, keys, async, callback, notFound, onFinish, limit, offset, orderBy, null);
+	}
+	public void getTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys,
+			boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFound) {
+		getTable(type, keys, async, callback, notFound, null);
+	}
+	private void queryTables(final Class<? extends DatabaseTable> type, HashMap<String, Object> keys, boolean async,
+			final Callback<TableDatabaseMultiKeys> callback, final Callback<HashMap<String, Object>> notFound,
+			final Callback<CallbackRequest<Boolean>> onFinish, final int limit, final int offset, final String orderBy,
+			final Callback<DatabaseTable> allTablesCallback) {
+		final HashMap<String, Object> filters = copyKeys(keys);
+		execute(async, new SqlOperation<List<DatabaseTable>>() {
+			@Override
+			public List<DatabaseTable> run(Connection connection) throws Exception {
+				DatabaseTable prototype = newTable(type, null);
+				List<DatabaseTable> tables = new ArrayList<DatabaseTable>();
+				try (PreparedStatement statement = prepareStatement("*", prototype, filters, connection, limit, offset, orderBy);
+						ResultSet result = statement.executeQuery()) {
+					while (result.next()) {
+						Object key = prototype instanceof TableDatabaseMultiKeys
+								? Long.valueOf(result.getLong(prototype.getKeyName())) : result.getObject(prototype.getKeyName());
+						DatabaseTable table = newTable(type, key);
+						if (table instanceof TableDatabaseMultiKeys) {
+							((TableDatabaseMultiKeys) table).load(result, false);
 						} else {
-							ex.printStackTrace();
+							table.setLoaded();
+							table.setHasData(true);
+							table.deserialize(result);
+							table.reloadLastSave(false);
 						}
-					}
-				});
-			} else {
-				getConnection(new Callback<Connection>() {
-					@Override
-					public void done(Connection connection, Exception exception) {
-						try {
-							String select = "SELECT * FROM " + table.getTableName();
-							PreparedStatement statement = connection.prepareStatement(select);
-							ResultSet resultSet = statement.executeQuery();
-							int resultSize = 0;
-							while (resultSet.next()) {
-								resultSize++;
-								DatabaseTable returnDB = (DatabaseTable) tableInstances.get(clase).newInstance(resultSet.getObject(table.getKeyName()));
-								returnDB.setHasData(true);
-								returnDB.setLoaded();
-								returnDB.deserialize(resultSet);
-								returnDB.reloadLastSave(false);
-								callback.done(returnDB, null);
-								if (resultSize == 0) {
-									if (onFinish != null) {
-										onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-									}
-									break;
-								}
-							}
-							if (onFinish != null) {
-								onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-							}
-							resultSet.close();
-							statement.close();
-							if (callback != null) {
-								callback.done(table, null);
-							}
-						} catch (Exception e) {
-							System.err.println("[Database]: Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
-							String errorMessage;
-							errorMessage = e + "\n";
-							for (StackTraceElement stack : e.getStackTrace()) {
-								errorMessage = errorMessage + "        at " + stack.getClassName() + "." + stack.getMethodName() + " (" + stack.getFileName() + ":" + stack.getLineNumber() + ")\n";
-							}
-							System.err.println("Error: " + errorMessage);
-							callback.done(table, e);
-							onFinish.done(new CallbackRequest<Boolean>(false, e.getMessage()), e);
-						}
-					}				
-				});
-			}
-		} else {
-			try {
-				throw new NullPointerException("This database " + clase.getName() + " is not registred in database " + this.getClass().getSimpleName());
-			} catch (NullPointerException ex) {
-				ex.printStackTrace();
-			}
-		}
-	}
-	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> clase, Callback<DatabaseTable> callback) {
-		newTableDatabaseMultiKeysEntry(clase, callback, false);
-	}
-	public void newTableDatabaseMultiKeysEntry(Class<? extends TableDatabaseMultiKeys> clase, Callback<DatabaseTable> callback, boolean async) {
-		getTable(clase, -0L, async, callback);
-	}
-	public void getTable(Class<? extends DatabaseTable> clase, Object key, Callback<DatabaseTable> callback) {
-		getTable(clase, key, true, callback);
-	}
-	public void getTable(Class<? extends DatabaseTable> clase, Object key, boolean async, Callback<DatabaseTable> callback) {
-		if (tableInstances.containsKey(clase)) {
-			DatabaseTable table = tableInstances.get(clase).newInstance(key);
-			if (table instanceof TableDatabaseMultiKeys) {
-				TableDatabaseMultiKeys mtdb = (TableDatabaseMultiKeys) table;
-				mtdb.buildKey((Long) key);
-				load(async, mtdb, callback);
-			} else {
-				load(async, table, callback);
-			}
-		} else {
-			try {
-				throw new NullPointerException("This database " + clase.getName() + " is not registred in database " + this.getClass().getSimpleName());
-			} catch (NullPointerException ex) {
-				ex.printStackTrace();
-			}
-		}
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
-		getTable(clase, keys, true, callback, notFinded, null);
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
-		getTable(clase, keys, async, callback, notFinded, null);
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
-		getTable(clase, keys, true, callback, notFinded, onFinish);
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish) {
-		getTable(clase, keys, async, callback, notFinded, onFinish, 0, 0);
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit) {
-		getTable(clase, keys, async, callback, notFinded, onFinish, limit, 0);
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset) {
-		getTable(clase, keys, async, callback, notFinded, onFinish, limit, offset, "");
-	}
-	public void getTable(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded, Callback<CallbackRequest<Boolean>> onFinish, int limit, int offset, String orderby) {
-		if (tableInstances.containsKey(clase)) {
-			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
-			if (newTable instanceof TableDatabaseMultiKeys) {
-				TableDatabaseMultiKeys db = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(null);
-				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
-				List<String> noKeys = new ArrayList<String>();
-				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(keyReplace(key.getKey()))) {
-						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
-							noKeys.add(key.getKey());
-						}
+						tables.add(table);
 					}
 				}
-				if (noKeys.isEmpty()) {
-					getConnection(new Callback<Connection>() {
-						@Override
-						public void done(Connection connection, Exception ex) {
-							if (ex == null) {
-								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection, limit, offset, orderby);
-									int statementSize = 1;
-									for (Entry<String, Object> key : keys.entrySet()) {
-										saveInStatement(statement, key.getValue(), statementSize++);
-									}
-									ResultSet result = statement.executeQuery();
-									if (DatabaseAPI.getInstance().getConfiguration().isSQL() || isObligatorySQLite()) { // si es sql suma el size y al finalizar si es 0 se entiende que no hay entries
-										int resultSize = 0;
-										while (result.next()) {
-											resultSize++;
-											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
-											returnDB.load(result);
-											callback.done(returnDB, null);
-											if (resultSize == 0) {
-												if (onFinish != null) {
-													onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-												}
-												break;
-											}
-										}
-										if (resultSize == 0) {
-											notFinded.done(keys, null);
-										}
-										if (onFinish != null) {
-											onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-										}
-									} else { // aqui coge el ultimo size y lo va restando
-										result.last();
-										int resultSize = result.getRow();
-										result.beforeFirst();
-										if (resultSize == 0) {
-											notFinded.done(keys, null);
-											if (onFinish != null) {
-												onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-											}
-										}
-										while (result.next()) {
-											resultSize--;
-											TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
-											returnDB.load(result);
-											callback.done(returnDB, null);
-											if (resultSize == 0) {
-												if (onFinish != null) {
-													onFinish.done(new CallbackRequest<Boolean>(resultSize != 0), null);
-												}
-												break;
-											}
-										}
-									}
-									result.close();
-									statement.close();
-								} catch (SQLException ex1) {
-									ex1.printStackTrace();
-								}
-							} else {
-								ex.printStackTrace();
-							}
-						}
-					});
-				} else {
-					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
-					onFinish.done(new CallbackRequest<Boolean>(false, "[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys), null);					
-				}
-			} else {
-				System.err.println("[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
-				onFinish.done(new CallbackRequest<Boolean>(false, "[TableDatabaseMultiKey]: La tabla " + newTable.getTableName() + " no es una TableDatabaseMultiKey..."), null);					
+				return tables;
 			}
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-			onFinish.done(new CallbackRequest<Boolean>(false, "This database " + clase.getName() + " is not registred"), null);					
-		}
-	}
-	public void getTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<TableDatabaseMultiKeys> callback, Callback<HashMap<String, Object>> notFinded) {
-		if (tableInstances.containsKey(clase)) {
-			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
-			if (newTable instanceof TableDatabaseMultiKeys) {
-				TableDatabaseMultiKeys db = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(null);
-				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
-				List<String> noKeys = new ArrayList<String>();
-				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(keyReplace(key.getKey()))) {
-						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
-							noKeys.add(key.getKey());
-						}
-					}
-				}
-				if (noKeys.isEmpty()) {
-					getConnection(new Callback<Connection>() {
-						@Override
-						public void done(Connection connection, Exception exception) {
-							if (exception == null) {
-								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection);
-									int statementSize = 1;
-									for (Entry<String, Object> key : keys.entrySet()) {
-										saveInStatement(statement, key.getValue(), statementSize++);
-									}
-									ResultSet result = statement.executeQuery();
-									int size = 0;
-									while (result.next()) { // aqui no es necesario comprobar eso por que no tiene callback de on finish
-										size++;
-										TableDatabaseMultiKeys returnDB = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(new Long((int) result.getObject(db.getKeyName())));
-										returnDB.load(result);
-										callback.done(returnDB, null);
-									}
-									if (size == 0) {
-										notFinded.done(keys, null);
-									}
-									result.close();
-									statement.close();
-								} catch(SQLException ex) {
-									ex.printStackTrace();
-								}
-							} else {
-								exception.printStackTrace();
-							}
-						}							
-					});
-				} else {
-					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
-				}
-			} else {
-				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
-			}
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = connection.prepareStatement("SELECT MAX(" + column + ") AS result FROM " + table.getTableName());
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getObject("result"), exception);
-						} else {
-							callback.done(null, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMaxOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = prepareStatement("MAX(" + column + ") AS result", table, keys, connection);
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getObject("result"), exception);
-						} else {
-							callback.done(null, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Object> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = connection.prepareStatement("SELECT MIN(" + column + ") AS result FROM " + table.getTableName());
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getObject("result"), exception);
-						} else {
-							callback.done(null, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMinOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Object> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = prepareStatement("MIN(" + column + ") AS result", table, keys, connection);
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getObject("result"), exception);
-						} else {
-							callback.done(null, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Double> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = connection.prepareStatement("SELECT AVG(" + column + ") AS result FROM " + table.getTableName());
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getDouble("result"), exception);
-						} else {
-							callback.done(0D, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getMedieOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Double> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = prepareStatement("AVG(" + column + ") AS result", table, keys, connection);
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getDouble("result"), exception);
-						} else {
-							callback.done(0D, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
-		if (tableInstances.containsKey(clase)) {
-
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = connection.prepareStatement("SELECT SUM(" + column + ") AS result FROM " + table.getTableName());
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getInt("result"), exception);
-						} else {
-							callback.done(0, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getSumOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
-		if (tableInstances.containsKey(clase)) {
-
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						DatabaseTable table = tableInstances.get(clase).newInstance(null);
-						PreparedStatement statement = prepareStatement("SUM(" + column + ") AS result", table, keys, connection);
-						ResultSet result = statement.executeQuery();
-						if (result.next()) {
-							callback.done(result.getInt("result"), exception);
-						} else {
-							callback.done(0, exception);
-						}
-						result.close();
-						statement.close();
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, boolean async, Callback<Integer> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					if (async) {
-						queue.submit(new Runnable() {
-							@Override
-							public void run() {
-								getCountOfTable(connection, exception, clase, null, column, callback);
-							}
-						});
+		}, new Callback<List<DatabaseTable>>() {
+			@Override
+			public void done(List<DatabaseTable> tables, Exception exception) {
+				if (exception != null) {
+					if (onFinish != null) {
+						notifyCallback(onFinish, new CallbackRequest<Boolean>(false, exception), exception);
+					} else if (allTablesCallback != null) {
+						notifyCallback(allTablesCallback, null, exception);
 					} else {
-						getCountOfTable(connection, exception, clase, null, column, callback);
+						notifyCallback(callback, null, exception);
 					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void getCountOfTable(Class<? extends DatabaseTable> clase, String column, HashMap<String, Object> keys, boolean async, Callback<Integer> callback) {
-		if (tableInstances.containsKey(clase)) {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					if (async) {
-						queue.submit(new Runnable() {
-							@Override
-							public void run() {
-								getCountOfTable(connection, exception, clase, keys, column, callback);
-							}
-						});
-					} else {
-						getCountOfTable(connection, exception, clase, keys, column, callback);
-					}
-				}			
-			});
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	private void getCountOfTable(Connection connection, Exception ex, Class<? extends DatabaseTable> clase, HashMap<String, Object> keys, String column, Callback<Integer> callback) {
-		if (tableInstances.containsKey(clase)) {
-			try {
-				DatabaseTable table = tableInstances.get(clase).newInstance(null);
-				PreparedStatement statement = null;
-				if (keys == null) {
-					statement = connection.prepareStatement("SELECT COUNT(" + column + ") AS result FROM " + table.getTableName());
-				} else {
-					statement = prepareStatement("COUNT(" + column + ") AS result", table, keys, connection);
+					return;
 				}
-				ResultSet result = statement.executeQuery();
-				if (result.next()) {
-					callback.done(result.getInt("result"), ex);
-				} else {
-					callback.done(0, ex);
-				}
-				result.close();
-				statement.close();
-			} catch (Exception e) {
-				callback.done(-1, e);
-			}
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
-	}
-	public void hasTableMultiKeysMultiEntrys(Class<? extends TableDatabaseMultiKeys> clase, HashMap<String, Object> keys, boolean async, Callback<Boolean> callback) {
-		if (tableInstances.containsKey(clase)) {
-			DatabaseTable newTable = tableInstances.get(clase).newInstance(null);
-			if (newTable instanceof TableDatabaseMultiKeys) {
-				TableDatabaseMultiKeys db = (TableDatabaseMultiKeys) tableInstances.get(clase).newInstance(null);
-				HashMap<String, Object> map = db.serialize(new HashMap<String, Object>());
-				List<String> noKeys = new ArrayList<String>();
-				for (Entry<String, Object> key : keys.entrySet()) {
-					if (!map.containsKey(keyReplace(key.getKey()))) {
-						if (!keyReplace(key.getKey()).equals(db.getKeyName())) {
-							noKeys.add(key.getKey());
+				for (DatabaseTable table : tables) {
+					try {
+						table.onLoad(true);
+					} catch (Exception failure) {
+						if (onFinish != null) {
+							notifyCallback(onFinish, new CallbackRequest<Boolean>(false, failure), failure);
+						} else {
+							notifyCallback(callback, null, failure);
 						}
+						return;
+					}
+					if (allTablesCallback != null) {
+						notifyCallback(allTablesCallback, table, null);
+					} else if (table instanceof TableDatabaseMultiKeys) {
+						notifyCallback(callback, (TableDatabaseMultiKeys) table, null);
 					}
 				}
-				if (noKeys.isEmpty()) {
-					getConnection(new Callback<Connection>() {
-						@Override
-						public void done(Connection connection, Exception exception) {
-							if (exception == null) {
-								try {
-									PreparedStatement statement = prepareStatement(db, keys, connection, 1);
-									int statementSize = 1;
-									for (Entry<String, Object> key : keys.entrySet()) {
-										saveInStatement(statement, key.getValue(), statementSize++);
-									}
-									ResultSet result = statement.executeQuery();
-									callback.done(result.next(), exception);
-									result.close();
-									statement.close();
-								} catch(SQLException ex) {
-									callback.done(false, exception);
-								}
-							} else {
-								exception.printStackTrace();
-							}
-						}							
-					});
-				} else {
-					System.err.println("[TableDatabaseMultiKey]: No se ha encontrado las siguientes keys en la TableDatabaseMultiKey de " + newTable.getTableName() + ": " + noKeys);
+				if (tables.isEmpty() && notFound != null) {
+					notifyCallback(notFound, filters, null);
 				}
-			} else {
-				System.err.println("[TableDatabaseMultiKey]: La base de datos " + newTable.getTableName() + " no es una TableDatabaseMultiKey...");
+				notifyCallback(onFinish, new CallbackRequest<Boolean>(!tables.isEmpty()), null);
 			}
-		} else {
-			System.err.println("This database " + clase.getName() + " is not registred in " + getDatabaseName());
-		}
+		});
 	}
-	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement("*", table, keys, connection, 0, 0, "");
-	}
-	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit) throws SQLException {
-		return prepareStatement("*", table, keys, connection, limit, 0, "");
-	}
-	private PreparedStatement prepareStatement(DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset, String orderBy) throws SQLException {
-		return prepareStatement("*", table, keys, connection, limit, offset, orderBy);
-	}
-	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection) throws SQLException {
-		return prepareStatement(selectQuery, table, keys, connection, 0, 0, "");
-	}
-	private PreparedStatement prepareStatement(String selectQuery, DatabaseTable table, HashMap<String, Object> keys, Connection connection, int limit, int offset, String orderBy) throws SQLException {
-		String select = "SELECT " + selectQuery + " FROM " + table.getTableName() + " WHERE ";
-		boolean first = true;
-		for (Entry<String, Object> key : keys.entrySet()) {
-			if (!first) {
-				select += " AND ";
+	public void hasTableMultiKeysMultiEntrys(final Class<? extends TableDatabaseMultiKeys> type, HashMap<String, Object> keys,
+			boolean async, Callback<Boolean> callback) {
+		final HashMap<String, Object> filters = copyKeys(keys);
+		execute(async, new SqlOperation<Boolean>() {
+			@Override
+			public Boolean run(Connection connection) throws Exception {
+				DatabaseTable table = newTable(type, null);
+				try (PreparedStatement statement = prepareStatement("1", table, filters, connection, 1, 0, "");
+						ResultSet result = statement.executeQuery()) {
+					return result.next();
+				}
 			}
-			first = false;
-			if (key.getKey().contains("!")) {
-				select += key.getKey().replace("!", "") + " !=?";
-			} else if (key.getKey().contains("<=")) {
-				select += key.getKey().replace("<=", "") + " <=?";
-			} else if (key.getKey().contains(">=")) {
-				select += key.getKey().replace(">=", "") + " >=?";
-			} else if (key.getKey().contains("<")) {
-				select += key.getKey().replace("<", "") + " <?";
-			} else if (key.getKey().contains(">")) {
-				select += key.getKey().replace(">", "") + " >?";
-			} else if (key.getKey().contains("LIKE")) {
-				select += key.getKey().replace("LIKE", "") + " LIKE ?";
-			} else {
-				select += key.getKey() + " =?";
-			}
-		}
-		if (!orderBy.isEmpty()) {
-			select += " ORDER BY " + orderBy;
-		}
-		if (limit != 0) {
-			select += " LIMIT " + limit;
-		}
-		if (offset != 0) {
-			select += " OFFSET " + offset;
-		}
-		PreparedStatement statement = connection.prepareStatement(select);
-		int statementSize = 1;
-		for (Entry<String, Object> key : keys.entrySet()) {
-			saveInStatement(statement, key.getValue(), statementSize++);
-		}
-		return statement;
+		}, callback);
 	}
 	public void load(boolean async, DatabaseTable table) {
-		if (!table.isLoaded()) {
-			if (async) {
-				queue.submit(new Runnable() {
-					@Override
-					public void run() {
-						load(null, table);
-					}
-				});
-			} else {
-				load(null, table);
-			}
-		}
+		load(async, table, null);
 	}
-	public void load(boolean async, DatabaseTable table, Callback<DatabaseTable> callback) {
-		if (!table.isLoaded()) {
-			if (async) {
-				queue.submit(new Runnable() {
-					@Override
-					public void run() {
-						load(callback, table);
-					}
-				});
-			} else {
-				load(callback, table);
-			}
-		}
-	}
-	private void load(Callback<DatabaseTable> callback, DatabaseTable table) {
+	public void load(boolean async, final DatabaseTable table, final Callback<DatabaseTable> callback) {
 		if (table instanceof MultiPlayerDatabaseTable) {
-			MultiPlayerDatabaseTable multiTable = (MultiPlayerDatabaseTable) table;
-			multiTable.load(false, callback);
-		} else {
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
-					try {
-						String select = "SELECT * FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = ?";
-						PreparedStatement statement = connection.prepareStatement(select);
-						saveInStatement(statement, table.keySerialize(), 1);
-						ResultSet resultSet = statement.executeQuery();
-						table.setHasData(resultSet.next());
-						if (table.hasData()) {
-							table.deserialize(resultSet);
-						}
-						table.setLoaded();
-						table.onLoad(table.hasData());
-						table.reloadLastSave(false);
-						resultSet.close();
-						statement.close();
-						if (callback != null) {
-							callback.done(table, null);
-						}
-					} catch (Exception e) {
-						System.err.println("[Database]: Ha ocurrido un error al cargar la database " + name + " el error ha sido enviado por la callback");
-						String errorMessage;
-						errorMessage = e + "\n";
-						for (StackTraceElement stack : e.getStackTrace()) {
-							errorMessage = errorMessage + "        at " + stack.getClassName() + "." + stack.getMethodName() + " (" + stack.getFileName() + ":" + stack.getLineNumber() + ")\n";
-						}
-						System.err.println("Error: " + errorMessage);
-						callback.done(table, e);
-					}
-				}				
-			});
+			((MultiPlayerDatabaseTable) table).load(async, callback);
+			return;
 		}
+		execute(async, new SqlOperation<Boolean>() {
+			@Override
+			public Boolean run(Connection connection) throws Exception {
+				if (table.isLoaded()) {
+					return false;
+				}
+				HashMap<String, Object> keys = new HashMap<String, Object>();
+				keys.put(table.getKeyName(), table.keySerialize());
+				try (PreparedStatement statement = prepareStatement("*", table, keys, connection, 1, 0, "");
+						ResultSet result = statement.executeQuery()) {
+					table.setHasData(result.next());
+					if (table.hasData()) {
+						table.deserialize(result);
+					}
+					table.setLoaded();
+				}
+				return true;
+			}
+		}, new Callback<Boolean>() {
+			@Override
+			public void done(Boolean newlyLoaded, Exception exception) {
+				if (exception == null && Boolean.TRUE.equals(newlyLoaded)) {
+					try {
+					table.onLoad(table.hasData());
+					table.reloadLastSave(false);
+				} catch (Exception failure) {
+					notifyCallback(callback, table, failure);
+					return;
+				}
+				}
+				notifyCallback(callback, table, exception);
+			}
+		});
 	}
 	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table) {
-		save(async, ignoreColumnsUpdate, table, null);
+		save(async, ignoreColumnsUpdate, false, table, null);
 	}
 	public void save(boolean async, boolean ignoreColumnsUpdate, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
-		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
-			if (async) {
-				queue.submit(new Runnable() {
-					@Override
-					public void run() {
-						save(table, callback);
-					}
-				});
-			} else {
-				save(table, callback);
-			}
-		} else {
-			if (table.isSaved(ignoreColumnsUpdate) && callback != null) {
-				callback.done(new SimpleCallbackRequest(), null);
-			}
-		}
+		save(async, ignoreColumnsUpdate, false, table, callback);
 	}
-	public void save(boolean async, boolean ignoreColumnsUpdate, boolean ignoreOnSave, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
-		if (DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) && table.isLoaded() && !table.isSaved(ignoreColumnsUpdate)) {
-			if (async) {
-				queue.submit(new Runnable() {
-					@Override
-					public void run() {
-						save(ignoreOnSave, table, callback);
-					}
-				});
-			} else {
-				save(ignoreOnSave, table, callback);
+	public void save(boolean async, final boolean ignoreColumnsUpdate, final boolean ignoreOnSave,
+			final DatabaseTable table, final Callback<SimpleCallbackRequest> callback) {
+		execute(async, new SqlOperation<Boolean>() {
+			@Override
+			public Boolean run(Connection connection) throws Exception {
+				return saveRecord(connection, table, ignoreColumnsUpdate);
 			}
-		} else {
-			if (table.isSaved(ignoreColumnsUpdate)) {
-				callback.done(new SimpleCallbackRequest(), null);
-			}
-		}
-	}
-	private void save(DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
-		save(false, table, callback);
-	}
-	private void save(boolean ignoreOnSave, DatabaseTable table, Callback<SimpleCallbackRequest> callback) {
-		if (!table.isSaving()) {
-			table.setSaving(true);
-			getConnection(new Callback<Connection>() {
-				@Override
-				public void done(Connection connection, Exception exception) {
+		}, new Callback<Boolean>() {
+			@Override
+			public void done(Boolean written, Exception exception) {
+				if (exception == null && Boolean.TRUE.equals(written) && !ignoreOnSave) {
 					try {
-						PreparedStatement statement;
-						if (table.hasData()) {
-							statement = update(connection, table);
-						} else {
-							if (!(table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && TableDatabaseMultiKeys.class.isAssignableFrom(table.getClass()))) {
-								String find = "SELECT * FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = ? LIMIT 1;";
-								PreparedStatement findKeyStatement = connection.prepareStatement(find);
-								saveInStatement(findKeyStatement, table.keySerialize(), 1);
-								ResultSet result = findKeyStatement.executeQuery();
-								boolean has = result.next();
-								table.setHasData(has);
-							}
-							if (table.hasData()) {
-								statement = update(connection, table);
-							} else {
-								statement = insert(connection, table);
-							}
-						}
-						int affectedRows = statement.executeUpdate();
-						if (affectedRows > 0 && !table.hasData() && (table.isAutoIncrement() && (table.getKeyType().equals(DatabaseKeyType.INT) || table.getKeyType().equals(DatabaseKeyType.LONG)) && table.keySerialize() instanceof Number && (table.keySerialize() instanceof Long ? ((long)table.keySerialize()) == -0 : ((int)table.keySerialize()) == -0) && TableDatabaseMultiKeys.class.isAssignableFrom(table.getClass()))) {
-			                try (ResultSet rs = statement.getGeneratedKeys()) {
-			                    if (rs.next()) {
-									TableDatabaseMultiKeys mKey = (TableDatabaseMultiKeys) table; 
-									mKey.buildKey(rs.getLong(1));
-			                    }
-			                }
-						}
-						statement.close();
-						table.reloadLastSave(!ignoreOnSave);
-						if (callback != null) {
-							callback.done(new SimpleCallbackRequest(), exception);
-						}
-					} catch(SQLException ex) {
-						if (callback != null) {
-							callback.done(new SimpleCallbackRequest(ex.getMessage()), exception);
-						}
-						ex.printStackTrace();
-					} finally {
-						table.setSaving(false);
+						table.onSave();
+					} catch (Exception failure) {
+						exception = failure;
 					}
 				}
-			});
-		}
+				notifyCallback(callback, exception == null ? new SimpleCallbackRequest() : failureResult(exception), exception);
+			}
+		});
+	}
+	public void getMaxOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<Object> callback) {
+		getMaxOfTable(type, column, null, async, callback);
+	}
+	public void getMaxOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<Object> callback) {
+		aggregate(type, column, keys, async, "MAX", Object.class, callback);
+	}
+	public void getMinOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<Object> callback) {
+		getMinOfTable(type, column, null, async, callback);
+	}
+	public void getMinOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<Object> callback) {
+		aggregate(type, column, keys, async, "MIN", Object.class, callback);
+	}
+	public void getMedieOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<Double> callback) {
+		getMedieOfTable(type, column, null, async, callback);
+	}
+	public void getMedieOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<Double> callback) {
+		aggregate(type, column, keys, async, "AVG", Double.class, callback);
+	}
+	public void getSumOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<Integer> callback) {
+		getSumOfTable(type, column, null, async, callback);
+	}
+	public void getSumOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<Integer> callback) {
+		aggregate(type, column, keys, async, "SUM", Integer.class, callback);
+	}
+	public void getCountOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<Integer> callback) {
+		getCountOfTable(type, column, null, async, callback);
+	}
+	public void getCountOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<Integer> callback) {
+		aggregate(type, column, keys, async, "COUNT", Integer.class, callback);
+	}
+	public void getDecimalSumOfTable(Class<? extends DatabaseTable> type, String column, boolean async, Callback<BigDecimal> callback) {
+		getDecimalSumOfTable(type, column, null, async, callback);
+	}
+	public void getDecimalSumOfTable(Class<? extends DatabaseTable> type, String column, HashMap<String, Object> keys,
+			boolean async, Callback<BigDecimal> callback) {
+		aggregate(type, column, keys, async, "SUM", BigDecimal.class, callback);
 	}
 	/**
 	 * This method is used to register the tables in the API so that they can be used later.
@@ -1037,20 +499,26 @@ public abstract class Database {
 			getConnection(new Callback<Connection>() {
 				@Override
 				public void done(Connection connection, Exception exception) {
+					if (exception != null) {
+						tableInstance.registerError("Error de conexión al registrar la tabla");
+						return;
+					}
 					try {
 						DatabaseMetaData meta = connection.getMetaData();
-						ResultSet rs = meta.getTables(null, null, table.getTableName(), new String[] {"TABLE"});
-						boolean tableExists = rs.next();
+						boolean tableExists;
+						try (ResultSet rs = meta.getTables(null, null, table.getTableName(), new String[] {"TABLE"})) {
+							tableExists = rs.next();
+						}
 						if (tableExists) {
 							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha cargado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 							Map<String, String> actualColumns = new HashMap<>();
-							ResultSet columns = meta.getColumns(null, null, table.getTableName(), null);
+							try (ResultSet columns = meta.getColumns(null, null, table.getTableName(), null)) {
 							while (columns.next()) {
 							    String columnName = columns.getString("COLUMN_NAME");
 							    String dataType = columns.getString("TYPE_NAME");
 							    actualColumns.put(columnName, dataType);
 							}
-							columns.close();							
+							}							
 							Map<String, Object> expectedMap = table.serialize(new HashMap<String, Object>());
 							Map<String, String> expectedColumns = new HashMap<String, String>();
 							for (Entry<String, Object> entry : expectedMap.entrySet()) {
@@ -1084,9 +552,10 @@ public abstract class Database {
 								createTableStatement = createTableStatement + ", " + save.getKey() + " " + getStatementName(save.getValue()) + " NOT NULL";
 							}
 							createTableStatement = createTableStatement + ");";
-							PreparedStatement statement = connection.prepareStatement(createTableStatement);
+							try (PreparedStatement statement = connection.prepareStatement(createTableStatement)) {
 							System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha generado correctamente en la base de datos " + getDatabaseName() + (isSQLite() ? "sqlite" : "mysql"));
 							statement.executeUpdate();
+							}
 						}
 						tableInstances.put(tableClass, tableInstance);
 						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
@@ -1127,139 +596,446 @@ public abstract class Database {
 			System.out.println("[Database]: &cLa tabla " + table.getTableName() + " no se puede editar porque no estaba registrada...");
 		}
 	}
-	private PreparedStatement insert(Connection connection, DatabaseTable table) throws SQLException {
-		String insertStatement = "INSERT INTO " + table.getTableName() + " (";
-		boolean seetedFirstKey = false;
-		Object keySerialized = table.keySerialize();
-		boolean needBuildKey = !table.isAutoIncrement() || (!table.hasData() && keySerialized instanceof Long && (Long) keySerialized != 0);
-		if (needBuildKey) {
-			seetedFirstKey = true;
-			insertStatement = insertStatement + table.getKeyName();
-		}
-		HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
-		for (Entry<String, Object> save : saveMap.entrySet()) {
-			insertStatement = insertStatement + (!seetedFirstKey ? "" : ", ") + save.getKey();
-			seetedFirstKey = true;
-		}
-		seetedFirstKey = false;
-		insertStatement = insertStatement + ") VALUES (";
-		if (needBuildKey) {
-			seetedFirstKey = true;
-			insertStatement = insertStatement + "?";
-		}
-		for (int i = saveMap.size(); i > 0; i--) {
-			insertStatement = insertStatement + (!seetedFirstKey ? "" : ", ") + "?";
-			seetedFirstKey = true;
-		}
-		insertStatement = insertStatement + ")";
-		PreparedStatement preparedStatement = connection.prepareStatement(insertStatement, Statement.RETURN_GENERATED_KEYS);
-		int statementSize = 1;
-		if (needBuildKey) {
-			saveInStatement(preparedStatement, table.keySerialize(), statementSize++);
-		}
-		for (Entry<String, Object> save : saveMap.entrySet()) {
-			saveInStatement(preparedStatement, save.getValue(), statementSize++);
-		}
-		//System.out.println(insertStatement);
-		return preparedStatement;
-	}
-	private PreparedStatement update(Connection connection, DatabaseTable table) throws SQLException {
-		HashMap<String, Object> saveMap = table.serialize(new HashMap<String, Object>());
-		String saveStatement = "UPDATE " + table.getTableName() + " SET";
-		for (Entry<String, Object> save : saveMap.entrySet()) {
-			saveStatement = saveStatement + " " + save.getKey() + " = ?,";
-		}
-		saveStatement = saveStatement.substring(0, saveStatement.length() - 1) + " WHERE " + table.getKeyName() + " = ?";
-		PreparedStatement statement = connection.prepareStatement(saveStatement, Statement.RETURN_GENERATED_KEYS);
-		int statementSize = 1;
-		for (Entry<String, Object> save : saveMap.entrySet()) {
-			saveInStatement(statement, save.getValue(), statementSize++);
-		}
-		String className = table.keySerialize().getClass().getSimpleName();
-		if (className.equals("Integer")) {
-			saveInStatement(statement, Integer.valueOf(table.keySerialize().toString()), statementSize++);
-		} else {
-			saveInStatement(statement, table.keySerialize().toString(), statementSize++);
-		}
-		//System.out.println(saveStatement);
-		return statement;
-	}
-	public void remove(boolean async, DatabaseTable table, Callback<Integer> callback) {
-		if (async) {
-			queue.submit(new Runnable() {
-				@Override
-				public void run() {
-					remove(table, callback);
+	public void remove(boolean async, final DatabaseTable table, Callback<Integer> callback) {
+		execute(async, new SqlOperation<Integer>() {
+			@Override
+			public Integer run(Connection connection) throws Exception {
+				String sql = "DELETE FROM " + identifier(table.getTableName()) + " WHERE " + identifier(table.getKeyName()) + " = ?";
+				int affected;
+				try (PreparedStatement statement = connection.prepareStatement(sql)) {
+					saveInStatement(statement, table.keySerialize(), 1);
+					affected = statement.executeUpdate();
 				}
-			});
-		} else {
-			remove(table, callback);
-		}
+				table.setHasData(false);
+				return affected;
+			}
+		}, callback);
 	}
 	public void remove(boolean async, DatabaseTable table) {
 		remove(async, table, null);
 	}
-	private void remove(DatabaseTable table, Callback<Integer> callback) {
-		getConnection(new Callback<Connection>() {
-			@Override
-			public void done(Connection connection, Exception exception) {
-				try {
-					PreparedStatement statement = delete(connection, table);
-					int affected = statement.executeUpdate();
-					statement.close();
-					table.setHasData(false);
-					if (callback != null) {
-						callback.done(affected, exception);
-					}
-				} catch(SQLException ex) {
-					ex.printStackTrace();
-				}
-			}			
-		});
-	}
-	private PreparedStatement delete(Connection connection, DatabaseTable table) throws SQLException {
-		String removeStatement = "DELETE FROM " + table.getTableName() + " WHERE " + table.getKeyName() + " = " + table.keySerialize() + ";";
-		PreparedStatement preparedStatement = connection.prepareStatement(removeStatement);
-		return preparedStatement;
-	}
-	public void saveInStatement(PreparedStatement statement, Object o, int statementSize) throws SQLException {
-		String className = o.getClass().getSimpleName();
-		if (className.equals("Integer")) {
-			statement.setInt(statementSize, (Integer) o);
-		} else if (className.equals("Double")) {
-			statement.setDouble(statementSize, (Double) o);
-		} else if (className.equals("Long")) {
-			statement.setLong(statementSize, (Long) o);
-		} else if (className.equals("Boolean")) {
-			statement.setBoolean(statementSize, (Boolean) o);
-		} else if (className.equals("String")) {
-			statement.setString(statementSize, (String) o);
+	public void saveInStatement(PreparedStatement statement, Object value, int index) throws SQLException {
+		if (value == null) {
+			statement.setNull(index, Types.NULL);
+		} else if (value instanceof Integer) {
+			statement.setInt(index, (Integer) value);
+		} else if (value instanceof Double) {
+			statement.setDouble(index, (Double) value);
+		} else if (value instanceof Long) {
+			statement.setLong(index, (Long) value);
+		} else if (value instanceof Boolean) {
+			statement.setBoolean(index, (Boolean) value);
+		} else if (value instanceof BigDecimal) {
+			statement.setBigDecimal(index, (BigDecimal) value);
 		} else {
-			statement.setString(statementSize, o.toString());
+			statement.setString(index, value.toString());
 		}
 	}
-	public String getStatementName(Object o) { 
-		String className = o.getClass().getSimpleName();
-		if (className.equals("Integer")) {
+	public String getStatementName(Object value) {
+		if (value instanceof Integer) {
 			return "INTEGER";
-		} else if (className.equals("Double")) {
+		}
+		if (value instanceof Double) {
 			return "DOUBLE";
-		} else if (className.equals("Long")) {
+		}
+		if (value instanceof Long) {
 			return "LONG";
-		} else if (className.equals("Boolean")) {
+		}
+		if (value instanceof Boolean) {
 			return "BOOLEAN";
-		} else {
-			return "TEXT";
+		}
+				return "TEXT";
+	}
+	private PreparedStatement prepareStatement(String select, DatabaseTable table, HashMap<String, Object> keys,
+			Connection connection, int limit, int offset, String orderBy) throws SQLException {
+		if (limit < 0 || offset < 0) {
+			throw new SQLException("El límite y el desplazamiento deben ser positivos");
+		}
+		StringBuilder sql = new StringBuilder("SELECT ").append(select).append(" FROM ").append(identifier(table.getTableName()));
+		List<Object> values = new ArrayList<Object>();
+		boolean first = true;
+		for (Entry<String, Object> entry : keys.entrySet()) {
+			String raw = entry.getKey();
+			String column = raw;
+			String operator = "=";
+			if (!hasColumn(table, column)) {
+				for (String suffix : new String[] {"!=", "<=", ">=", "LIKE", "!", "<", ">"}) {
+					if (raw.endsWith(suffix)) {
+						column = raw.substring(0, raw.length() - suffix.length());
+						operator = suffix.equals("!") ? "!=" : suffix;
+						break;
+					}
+				}
+			}
+			requireColumn(table, column);
+			sql.append(first ? " WHERE " : " AND ").append(identifier(column));
+			first = false;
+			if (entry.getValue() == null && (operator.equals("=") || operator.equals("!="))) {
+				sql.append(operator.equals("=") ? " IS NULL" : " IS NOT NULL");
+			} else {
+				sql.append(" ").append(operator).append(" ?");
+				values.add(entry.getValue());
+			}
+		}
+		if (orderBy != null && !orderBy.trim().isEmpty()) {
+			boolean firstOrder = true;
+			for (String term : orderBy.split(",", -1)) {
+				String[] parts = term.trim().split("\\s+");
+				if (parts.length > 2
+						|| (parts.length == 2 && !parts[1].equalsIgnoreCase("ASC") && !parts[1].equalsIgnoreCase("DESC"))) {
+					throw new SQLException("Orden de consulta inválido");
+				}
+				requireColumn(table, parts[0]);
+				sql.append(firstOrder ? " ORDER BY " : ", ").append(identifier(parts[0]));
+				if (parts.length == 2) {
+					sql.append(" ").append(parts[1].toUpperCase(Locale.ROOT));
+				}
+				firstOrder = false;
+			}
+		}
+		if (limit > 0) {
+			sql.append(" LIMIT ").append(limit);
+		} else if (offset > 0) {
+			sql.append(isSQLite() ? " LIMIT -1" : " LIMIT 18446744073709551615");
+		}
+		if (offset > 0) {
+			sql.append(" OFFSET ").append(offset);
+		}
+		PreparedStatement statement = connection.prepareStatement(sql.toString());
+		try {
+			int index = 1;
+			for (Object value : values) {
+				saveInStatement(statement, value, index++);
+			}
+			return statement;
+		} catch (SQLException | RuntimeException exception) {
+			statement.close();
+			throw exception;
 		}
 	}
-	private String keyReplace(String key) {
-		return key.replace("!", "").replace("=", "").replace("<", "").replace(">", "").replace("!", "").replace("!", "").replace("LIKE", "");
+	private String identifier(String name) throws SQLException {
+		if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+			throw new SQLException("Identificador de base de datos inválido");
+		}
+		return "`" + name + "`";
+	}
+	private boolean hasColumn(DatabaseTable table, String name) {
+		return table.getKeyName().equals(name) || table.serialize(new HashMap<String, Object>()).containsKey(name);
+	}
+	private void requireColumn(DatabaseTable table, String column) throws SQLException {
+		if (!hasColumn(table, column)) {
+			throw new SQLException("Columna no registrada en " + table.getTableName() + ": " + column);
+		}
+		identifier(column);
+	}
+	private DatabaseTable newTable(Class<? extends DatabaseTable> type, Object key) throws SQLException {
+		DatabaseTableInstance factory = tableInstances.get(type);
+		if (factory == null) {
+			throw new SQLException("La tabla no está registrada en " + getDatabaseName());
+		}
+		return factory.newInstance(key);
+	}
+	private HashMap<String, Object> copyKeys(HashMap<String, Object> keys) {
+		return keys == null ? new HashMap<String, Object>() : new HashMap<String, Object>(keys);
+	}
+	private <T> void aggregate(final Class<? extends DatabaseTable> type, final String column, HashMap<String, Object> keys,
+			boolean async, final String function, final Class<T> resultType, Callback<T> callback) {
+		final HashMap<String, Object> filters = copyKeys(keys);
+		execute(async, new SqlOperation<T>() {
+			@Override
+			public T run(Connection connection) throws Exception {
+				DatabaseTable table = newTable(type, null);
+				if (!function.equals("COUNT") || !column.equals("*")) {
+					requireColumn(table, column);
+				}
+				String select = function + "(" + (column.equals("*") ? "*" : identifier(column)) + ") AS result";
+				try (PreparedStatement statement = prepareStatement(select, table, filters, connection, 0, 0, "");
+						ResultSet result = statement.executeQuery()) {
+					result.next();
+					if (resultType == Object.class) {
+						return resultType.cast(result.getObject("result"));
+					}
+					if (resultType == Double.class) {
+						return resultType.cast(Double.valueOf(result.getDouble("result")));
+					}
+					BigDecimal value = result.getBigDecimal("result");
+					if (value == null) {
+						value = BigDecimal.ZERO;
+					}
+					if (resultType == BigDecimal.class) {
+						return resultType.cast(value);
+					}
+					return resultType.cast(Integer.valueOf(value.intValueExact()));
+				}
+			}
+		}, callback);
+	}
+	private boolean saveRecord(Connection connection, DatabaseTable table, boolean ignoreColumnsUpdate) throws SQLException {
+		if (!table.isLoaded()) {
+			throw new SQLException("La tabla debe cargarse antes de guardarse");
+		}
+		if (!DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) || noSaveTable.contains(table.getTableName())) {
+			throw new SQLException("El guardado está deshabilitado para esta tabla");
+		}
+		synchronized (table) {
+			if (table.isSaving()) {
+				throw new SQLException("La tabla ya tiene un guardado en curso");
+			}
+			if (table.isSaved(ignoreColumnsUpdate)) {
+				return false;
+			}
+			table.setSaving(true);
+		}
+		boolean ownTransaction = false;
+		try {
+			HashMap<String, Object> data = new HashMap<String, Object>(table.serialize(new HashMap<String, Object>()));
+			boolean inserting = !table.hasData();
+			boolean generatedKey = inserting && table instanceof TableDatabaseMultiKeys && table.isAutoIncrement()
+					&& table.keySerialize() instanceof Number && ((Number) table.keySerialize()).longValue() == 0L;
+			ownTransaction = connection.getAutoCommit();
+			if (ownTransaction) {
+				connection.setAutoCommit(false);
+			}
+			if (inserting && !generatedKey && rowExists(connection, table)) {
+				inserting = false;
+			}
+			long key = 0;
+			try (PreparedStatement statement = inserting ? insert(connection, table, data, generatedKey) : update(connection, table, data)) {
+				int affected = statement.executeUpdate();
+				if (affected == 0 && (inserting || !rowExists(connection, table))) {
+					throw new SQLException("No se ha confirmado la persistencia del registro");
+				}
+				if (generatedKey) {
+					try (ResultSet result = statement.getGeneratedKeys()) {
+						if (!result.next() || (key = result.getLong(1)) == 0L) {
+							throw new SQLException("No se pudo obtener la clave del nuevo registro");
+						}
+					}
+				}
+			}
+			if (ownTransaction) {
+				connection.commit();
+			}
+			if (generatedKey) {
+				((TableDatabaseMultiKeys) table).buildKey(key);
+			}
+			table.setHasData(true);
+			table.reloadLastSave(data, false);
+			return true;
+		} catch (SQLException | RuntimeException exception) {
+			if (ownTransaction) {
+				try {
+					connection.rollback();
+				} catch (SQLException rollbackFailure) {
+					exception.addSuppressed(rollbackFailure);
+				}
+			}
+			throw exception;
+		} finally {
+			table.setSaving(false);
+			if (ownTransaction) {
+				connection.setAutoCommit(true);
+			}
+		}
+	}
+	private boolean rowExists(Connection connection, DatabaseTable table) throws SQLException {
+		String sql = "SELECT 1 FROM " + identifier(table.getTableName()) + " WHERE " + identifier(table.getKeyName()) + " = ? LIMIT 1";
+		try (PreparedStatement statement = connection.prepareStatement(sql)) {
+			saveInStatement(statement, table.keySerialize(), 1);
+			try (ResultSet result = statement.executeQuery()) {
+				return result.next();
+			}
+		}
+	}
+	private PreparedStatement insert(Connection connection, DatabaseTable table, HashMap<String, Object> data,
+			boolean generatedKey) throws SQLException {
+		List<String> columns = new ArrayList<String>(data.keySet());
+		if (!generatedKey) {
+			columns.add(0, table.getKeyName());
+		}
+		StringBuilder sql = new StringBuilder("INSERT INTO ").append(identifier(table.getTableName()));
+		if (columns.isEmpty()) {
+			sql.append(isSQLite() ? " DEFAULT VALUES" : " () VALUES ()");
+		} else {
+			sql.append(" (");
+			for (int index = 0; index < columns.size(); index++) {
+				sql.append(index == 0 ? "" : ", ").append(identifier(columns.get(index)));
+			}
+			sql.append(") VALUES (");
+			for (int index = 0; index < columns.size(); index++) {
+				sql.append(index == 0 ? "?" : ", ?");
+			}
+			sql.append(")");
+		}
+		PreparedStatement statement = connection.prepareStatement(sql.toString(), Statement.RETURN_GENERATED_KEYS);
+		try {
+			int index = 1;
+			for (String column : columns) {
+				saveInStatement(statement, column.equals(table.getKeyName()) ? table.keySerialize() : data.get(column), index++);
+			}
+			return statement;
+		} catch (SQLException | RuntimeException exception) {
+			statement.close();
+			throw exception;
+		}
+	}
+	private PreparedStatement update(Connection connection, DatabaseTable table, HashMap<String, Object> data) throws SQLException {
+		StringBuilder sql = new StringBuilder("UPDATE ").append(identifier(table.getTableName())).append(" SET ");
+		List<String> columns = new ArrayList<String>(data.keySet());
+		for (int index = 0; index < columns.size(); index++) {
+			sql.append(index == 0 ? "" : ", ").append(identifier(columns.get(index))).append(" = ?");
+		}
+		if (columns.isEmpty()) {
+			sql.append(identifier(table.getKeyName())).append(" = ").append(identifier(table.getKeyName()));
+		}
+		sql.append(" WHERE ").append(identifier(table.getKeyName())).append(" = ?");
+		PreparedStatement statement = connection.prepareStatement(sql.toString());
+		try {
+			int index = 1;
+			for (String column : columns) {
+				saveInStatement(statement, data.get(column), index++);
+			}
+			saveInStatement(statement, table.keySerialize(), index);
+			return statement;
+		} catch (SQLException | RuntimeException exception) {
+			statement.close();
+			throw exception;
+		}
+	}
+	private SimpleCallbackRequest failureResult(Exception exception) {
+		String message = exception.getMessage();
+		return new SimpleCallbackRequest(message == null || message.isEmpty() ? exception.getClass().getSimpleName() : message);
+	}
+	private <T> void notifyCallback(Callback<T> callback, T result, Exception exception) {
+		if (callback == null) {
+			if (exception != null) {
+				exception.printStackTrace();
+			}
+			return;
+		}
+		try {
+			callback.done(result, exception);
+		} catch (RuntimeException callbackFailure) {
+			callbackFailure.printStackTrace();
+		}
+	}
+	private interface SqlOperation<T> {
+		T run(Connection connection) throws Exception;
+	}
+	private static class SqlResult<T> {
+		T value;
+		Exception error;
+	}
+	private <T> void execute(boolean async, final SqlOperation<T> operation, final Callback<T> callback) {
+		Runnable task = new Runnable() {
+			@Override
+			public void run() {
+				Integer previousDepth = operationDepth.get();
+				operationDepth.set(previousDepth == null ? 1 : previousDepth + 1);
+				try {
+					final SqlResult<T> result = new SqlResult<T>();
+					getConnection(new Callback<Connection>() {
+						@Override
+						public void done(Connection connection, Exception exception) {
+							result.error = exception;
+							if (exception == null) {
+								try {
+									result.value = operation.run(connection);
+								} catch (Exception failure) {
+									result.error = failure;
+								}
+							}
+						}
+					});
+					notifyCallback(callback, result.value, result.error);
+				} finally {
+					if (previousDepth == null) {
+						operationDepth.remove();
+					} else {
+						operationDepth.set(previousDepth);
+					}
+					synchronized (lifecycleLock) {
+						activeOperations--;
+						lifecycleLock.notifyAll();
+					}
+				}
+			}
+		};
+		Exception rejection = null;
+		synchronized (lifecycleLock) {
+			if (closing) {
+				rejection = new SQLException("La base de datos se está cerrando");
+			} else {
+				activeOperations++;
+				if (async && Thread.currentThread() != queueThread) {
+					try {
+						queue.execute(task);
+						return;
+					} catch (RejectedExecutionException exception) {
+						activeOperations--;
+						rejection = exception;
+					}
+				}
+			}
+		}
+		if (rejection == null) {
+			task.run();
+		} else {
+			notifyCallback(callback, null, rejection);
+		}
 	}
 	public void closeConnection() throws SQLException {
-		if (sqlConnection != null) {
-			sqlConnection.close();
-		} else {
-			mysqlConnection.close();
+		Future<?> completion;
+		synchronized (lifecycleLock) {
+			if (closingTask == null) {
+				closing = true;
+				closingTask = queue.submit(new Runnable() {
+					@Override
+					public void run() {
+						boolean interrupted = false;
+						synchronized (lifecycleLock) {
+							while (activeOperations > 0) {
+								try {
+									lifecycleLock.wait();
+								} catch (InterruptedException exception) {
+									interrupted = true;
+								}
+							}
+						}
+						if (interrupted) {
+							Thread.currentThread().interrupt();
+						}
+						synchronized (connectionLock) {
+							try {
+								if (sqlConnection != null) {
+									sqlConnection.close();
+								} else if (mysqlConnection != null) {
+									mysqlConnection.close();
+								}
+							} catch (SQLException exception) {
+								closeError = exception;
+							} finally {
+								closed = true;
+							}
+						}
+					}
+				});
+				queue.shutdown();
+			}
+			completion = closingTask;
+		}
+		if (Thread.currentThread() != queueThread && operationDepth.get() == null && !Thread.holdsLock(connectionLock)) {
+			try {
+				completion.get();
+			} catch (InterruptedException exception) {
+				Thread.currentThread().interrupt();
+				throw new SQLException("Se interrumpió el cierre de la base de datos", exception);
+			} catch (ExecutionException exception) {
+				throw new SQLException("No se pudo cerrar la base de datos", exception.getCause());
+			}
+			if (closeError != null) {
+				throw closeError;
+			}
 		}
 	}
 }

@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadFactory;
 
 import me.pepe.DatabaseAPI.DatabaseAPI;
 import me.pepe.DatabaseAPI.DatabaseManager.Databases.PlayerDataDatabase;
@@ -31,7 +35,16 @@ public class DatabaseManager {
 	private HashMap<Class<? extends Database>, Database> databases = new HashMap<Class<? extends Database>, Database>();
 	private HashMap<String, Database> temporalyDatabases = new HashMap<String, Database>();
 	private Connection mainConnection;
-	private ExecutorService loadQueue = Executors.newSingleThreadExecutor();
+	private volatile Thread loadThread;
+	private Future<Void> shutdownTask;
+	private ExecutorService loadQueue = Executors.newSingleThreadExecutor(new ThreadFactory() {
+		@Override
+		public Thread newThread(Runnable task) {
+			Thread thread = new Thread(task, "DatabaseAPI-load");
+			loadThread = thread;
+			return thread;
+		}
+	});
 	private List<String> noSaveDatabase = new ArrayList<String>();
 	public DatabaseManager(DatabaseAPI instance) {
 		this.instance = instance;
@@ -364,11 +377,48 @@ public class DatabaseManager {
 		}
 	}
 	public void unloadDatabases() throws SQLException {
-		for (Database dbs : databases.values()) {
-			dbs.closeConnection();
+		Future<Void> completion;
+		synchronized (this) {
+			if (shutdownTask == null) {
+				shutdownTask = loadQueue.submit(new Callable<Void>() {
+					@Override
+					public Void call() throws SQLException {
+						SQLException failure = null;
+						List<Database> all = new ArrayList<Database>(databases.values());
+						all.addAll(temporalyDatabases.values());
+						for (Database database : all) {
+							try {
+								database.closeConnection();
+							} catch (SQLException exception) {
+								if (failure == null) {
+									failure = exception;
+								} else {
+									failure.addSuppressed(exception);
+								}
+							}
+						}
+						if (mainConnection != null) {
+							mainConnection.close();
+						}
+						if (failure != null) {
+							throw failure;
+						}
+						return null;
+					}
+				});
+				loadQueue.shutdown();
+			}
+			completion = shutdownTask;
 		}
-		for (Database dbs : temporalyDatabases.values()) {
-			dbs.closeConnection();
+		if (Thread.currentThread() != loadThread) {
+			try {
+				completion.get();
+			} catch (InterruptedException exception) {
+				Thread.currentThread().interrupt();
+				throw new SQLException("Se interrumpió el cierre de DatabaseAPI", exception);
+			} catch (ExecutionException exception) {
+				throw new SQLException("Error al cerrar DatabaseAPI", exception.getCause());
+			}
 		}
 	}
 }

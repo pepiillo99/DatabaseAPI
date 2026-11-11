@@ -15,10 +15,15 @@ public abstract class TableDatabaseMultiKeys extends DatabaseTable {
 	public abstract void buildKey(Long key);
 	protected abstract void buildDatabase(ResultSet result) throws SQLException;
 	public void load(ResultSet result) throws SQLException {
+		load(result, true);
+	}
+	public void load(ResultSet result, boolean callOnLoad) throws SQLException {
 		loaded = true;
 		hasData = true;
 		buildDatabase(result);
 		reloadLastSave(false);
-		onLoad(hasData);
+		if (callOnLoad) {
+			onLoad(hasData);
+		}
 	}
 }
