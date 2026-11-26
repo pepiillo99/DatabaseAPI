@@ -38,6 +38,8 @@ import me.pepe.DatabaseAPI.Utils.CallbackRequest;
 import me.pepe.DatabaseAPI.Utils.DatabaseConfiguration;
 import me.pepe.DatabaseAPI.Utils.MySQLConnection;
 import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
+import me.pepe.DatabaseAPI.Schema.SchemaMigrationHistoryTable;
+import me.pepe.DatabaseAPI.Schema.SchemaMigrationManager;
 
 public abstract class Database {
 	private String name;
@@ -63,7 +65,10 @@ public abstract class Database {
 	});
 	private List<String> noSaveTable = new ArrayList<String>();
 	private Connection sqlConnection;
+	private File sqliteFile;
 	private MySQLConnection mysqlConnection;
+	private SchemaMigrationManager schemaMigrationManager;
+	private volatile SQLException schemaError;
 	public Database(String name) {
 		this(name, false, false);
 	}
@@ -77,6 +82,7 @@ public abstract class Database {
 		DatabaseConfiguration config = DatabaseAPI.getInstance().getConfiguration();
 		if (config.isSQL() || isObligatorySQLite()) {
 			File db = new File(config.getDataFolder(), "Databases/" + (temporaly ? "Temp/" : "") + name + ".db");
+			sqliteFile = db;
 			if (!db.exists()) {
 				try {
 					db.createNewFile();
@@ -146,6 +152,15 @@ public abstract class Database {
 	public String getDatabaseName() {
 		return name;
 	}
+	public File getSQLiteFile() {
+		if (sqliteFile == null) {
+			throw new IllegalStateException("La base no utiliza SQLite.");
+		}
+		return sqliteFile;
+	}
+	public long getSchemaMigrationVersion() {
+		return schemaMigrationManager == null ? 0 : schemaMigrationManager.getMigrationVersion();
+	}
 	public ExecutorService getQueue() {
 		return queue;
 	}
@@ -160,6 +175,10 @@ public abstract class Database {
 	}
 	public void getConnection(Callback<Connection> callback) {
 		synchronized (connectionLock) {
+			if (schemaError != null) {
+				notifyCallback(callback, null, schemaError);
+				return;
+			}
 			if (closed) {
 				notifyCallback(callback, null, new SQLException("La base de datos está cerrada"));
 				return;
@@ -490,9 +509,23 @@ public abstract class Database {
 	 */
 	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance, boolean saveDatabase) {
 		DatabaseTable table = tableInstance.newInstance(null);
+		final boolean managedSchema = instance.getConfiguration().isSchemaMigrationsEnabled() && tableClass != SchemaMigrationHistoryTable.class;
 		if (tableInstances.containsKey(tableClass)) {
 			System.err.println("[Database]: &cLa tabla " + table.getTableName() + " ya estaba registrada...");
 		} else {
+			if (managedSchema) {
+				try {
+					if (schemaMigrationManager == null) {
+						schemaMigrationManager = new SchemaMigrationManager(this);
+					}
+					schemaMigrationManager.initializeHistory(instance);
+				} catch (SQLException failure) {
+					schemaError = failure;
+					tableInstance.registerError("No se pudo preparar el historial de esquema: " + failure.getMessage());
+					tableInstances.put(tableClass, tableInstance);
+					return;
+				}
+			}
 			if (!saveDatabase) {
 				noSaveTable.add(table.getTableName());
 			}
@@ -501,9 +534,16 @@ public abstract class Database {
 				public void done(Connection connection, Exception exception) {
 					if (exception != null) {
 						tableInstance.registerError("Error de conexión al registrar la tabla");
+						tableInstances.put(tableClass, tableInstance);
+						if (instance.getConfiguration().isSchemaMigrationsEnabled()) {
+							schemaError = new SQLException("No se ha confirmado la preparación del esquema.", exception);
+						}
 						return;
 					}
 					try {
+						if (managedSchema) {
+							schemaMigrationManager.beforeTable(connection, table);
+						}
 						DatabaseMetaData meta = connection.getMetaData();
 						boolean tableExists;
 						try (ResultSet rs = meta.getTables(null, null, table.getTableName(), new String[] {"TABLE"})) {
@@ -542,7 +582,11 @@ public abstract class Database {
 							}							
 							for (String dbColumn : actualColumns.keySet()) {
 							    if (!expectedColumns.containsKey(dbColumn)) {
-							    	tableInstance.registerError("Extra column in table, not used in DatabaseTable: " + dbColumn);
+							    	if (managedSchema) {
+							    		System.out.println("[DatabaseAPI][schema] Columna conservada sin uso actual: " + table.getTableName() + "." + dbColumn);
+							    	} else {
+							    		tableInstance.registerError("Extra column in table, not used in DatabaseTable: " + dbColumn);
+							    	}
 							    }
 							}
 						} else {
@@ -557,9 +601,20 @@ public abstract class Database {
 							statement.executeUpdate();
 							}
 						}
+						if (managedSchema) {
+							if (tableInstance.hasError()) {
+								throw new SQLException("El esquema de " + table.getTableName() + " no supera la validación.");
+							}
+							schemaMigrationManager.afterTable(connection, table);
+						}
 						tableInstances.put(tableClass, tableInstance);
 						System.out.println("[Database]: &aLa tabla de " + table.getTableName() + " se ha registrado exitosamente en la base de datos " + getDatabaseName());
-					} catch(SQLException ex) {
+					} catch(SQLException | RuntimeException ex) {
+						tableInstance.registerError("No se ha confirmado el registro/actualización: " + ex.getMessage());
+						tableInstances.put(tableClass, tableInstance);
+						if (instance.getConfiguration().isSchemaMigrationsEnabled()) {
+							schemaError = ex instanceof SQLException ? (SQLException) ex : new SQLException("Fallo durante la preparación del esquema.", ex);
+						}
 						ex.printStackTrace();
 					}
 				}			
@@ -567,6 +622,9 @@ public abstract class Database {
 		}
 	}
 	public boolean hasError() {
+		if (schemaError != null) {
+			return true;
+		}
 		for (DatabaseTableInstance tableInstance : tableInstances.values()) {
 			if (tableInstance.hasError()) {
 				return true;
@@ -576,6 +634,11 @@ public abstract class Database {
 	}
 	public HashMap<String, List<String>> getErrors() {
 		HashMap<String, List<String>> errors = new HashMap<String, List<String>>();
+		if (schemaError != null) {
+			List<String> failures = new ArrayList<String>();
+			failures.add(schemaError.getMessage());
+			errors.put("DatabaseSchemaMigrationTable", failures);
+		}
 		for (DatabaseTableInstance<?> tableInstance : tableInstances.values()) {
 			if (tableInstance.hasError()) {
 				List<String> tableErrors = new ArrayList<String>();
