@@ -82,6 +82,12 @@ public abstract class DatabaseTable {
 	public void setLoaded() {
 		loaded = true;
 	}
+	/** Invalida el objeto ante un resultado incierto; debe recargarse tras conciliar la base. */
+	public synchronized void invalidatePersistence() {
+		loaded = false;
+		hasData = false;
+		lastSave = null;
+	}
 	public Database getDatabase() {
 		return database;
 	}

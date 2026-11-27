@@ -79,6 +79,14 @@ public class SchemaMigrationManager {
             }
             catalogReady = true;
         }
+        try (PreparedStatement statement = connection.prepareStatement("SELECT 1 FROM " + quote(SchemaMigrationHistoryTable.NAME) + " WHERE instr(','||lower(retiredNames)||',', ','||lower(?)||',')>0 LIMIT 1")) {
+            statement.setString(1, table.getTableName());
+            try (ResultSet row = statement.executeQuery()) {
+                if (row.next()) {
+                    throw new SQLException("Una migración retiró " + table.getTableName() + "; no se recrea vacía ni se ignora su archivo de recuperación.");
+                }
+            }
+        }
         if (!exists(connection, table.getTableName())) {
             return;
         }
@@ -100,6 +108,9 @@ public class SchemaMigrationManager {
         String id = tableMigrationID(table);
         String checksum = tableChecksum(table);
         String previous = appliedChecksum(connection, id);
+        if (previous != null && !previous.equals(checksum)) {
+            throw new SQLException("El esquema declarado de " + table.getTableName() + " ha cambiado: incrementa la versión de esquema antes de publicar.");
+        }
         if (previous != null && !changes.isEmpty()) {
             throw new SQLException("El historial indica una actualización aplicada, pero faltan columnas en " + table.getTableName() + ". Se requiere recuperación, no sobrescritura.");
         }
@@ -173,6 +184,8 @@ public class SchemaMigrationManager {
         Path backup = null;
         boolean transaction = false;
         boolean attached = false;
+        long originalForeignKeys = scalar(connection, "PRAGMA foreign_keys");
+        long originalBusyTimeout = scalar(connection, "PRAGMA busy_timeout");
         try (Statement statement = connection.createStatement()) {
             statement.execute("PRAGMA busy_timeout=5000");
             statement.execute("PRAGMA foreign_keys=ON");
@@ -189,10 +202,14 @@ public class SchemaMigrationManager {
                 transaction = false;
                 return;
             }
-            Map<String, Snapshot> snapshots = snapshots(connection);
+            boolean mutation = needsMutation(connection, changes);
+            if (scalar(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='" + SchemaMigrationHistoryTable.NAME + "'") != 0) {
+                throw new SQLException("No se admiten triggers sobre el historial de migraciones.");
+            }
+            Map<String, Snapshot> snapshots = mutation ? snapshots(connection) : Collections.<String, Snapshot>emptyMap();
             long lastID = scalar(connection, "SELECT COALESCE(MAX(ID),0) FROM " + quote(SchemaMigrationHistoryTable.NAME));
-            long violations = foreignKeyViolations(connection);
-            if (needsMutation(connection, changes)) {
+            long violations = mutation ? foreignKeyViolations(connection) : 0;
+            if (mutation) {
                 integrity(connection);
                 backup = createBackup(connection, id);
                 try (PreparedStatement attach = connection.prepareStatement("ATTACH DATABASE ? AS migration_backup")) {
@@ -207,7 +224,7 @@ public class SchemaMigrationManager {
                 executeChange(connection, change, snapshots, added, retired, backup);
             }
             long next = Math.addExact(lastID, 1);
-            record(connection, next, id, checksum, description, tableName, backup);
+            record(connection, next, id, checksum, description, tableName, backup, retired);
             if (attached) {
                 for (Snapshot snapshot : snapshots.values()) {
                     verifySnapshot(connection, snapshot, lastID);
@@ -224,6 +241,11 @@ public class SchemaMigrationManager {
             statement.execute("COMMIT");
             transaction = false;
             migrationVersion = next;
+            for (SchemaChange change : changes) {
+                if (change.getType() == SchemaChange.Type.DROP_TABLE && retired.contains(change.getTable())) {
+                    System.out.println("[DatabaseAPI][schema] TABLA ELIMINADA: " + change.getTable() + "; backup=" + backup);
+                }
+            }
             System.out.println("[DatabaseAPI][schema] " + database.getDatabaseName() + " versión " + configuration.getSchemaVersion() + ", paso " + next + ": " + id + (backup == null ? " (sin cambios de datos/esquema)" : "; backup=" + backup));
         } catch (Exception failure) {
             if (transaction) {
@@ -236,10 +258,12 @@ public class SchemaMigrationManager {
             System.err.println("[DatabaseAPI][schema] ACTUALIZACIÓN NO CONFIRMADA: " + database.getDatabaseName() + "/" + id + (backup == null ? "" : "; copia conservada=" + backup));
             throw failure instanceof SQLException ? (SQLException) failure : new SQLException("No se completó la migración " + id, failure);
         } finally {
-            if (attached) {
-                try (Statement detach = connection.createStatement()) {
+            try (Statement detach = connection.createStatement()) {
+                if (attached) {
                     detach.execute("DETACH DATABASE migration_backup");
                 }
+                detach.execute("PRAGMA foreign_keys=" + originalForeignKeys);
+                detach.execute("PRAGMA busy_timeout=" + originalBusyTimeout);
             }
         }
     }
@@ -297,7 +321,7 @@ public class SchemaMigrationManager {
                 retired.add(change.getTable());
             } else if (change.getType() == SchemaChange.Type.DROP_TABLE) {
                 requireBackup(backup);
-                System.out.println("[DatabaseAPI][schema] ELIMINACIÓN DE TABLA " + change.getTable() + "; datos conservados en " + backup);
+                System.out.println("[DatabaseAPI][schema] PREPARANDO ELIMINACIÓN DE TABLA " + change.getTable() + "; datos conservados en " + backup);
                 for (Snapshot snapshot : snapshots.values()) {
                     if (snapshot.current.equalsIgnoreCase(change.getTable())) {
                         verifySnapshot(connection, snapshot, Long.MAX_VALUE);
@@ -365,8 +389,8 @@ public class SchemaMigrationManager {
             throw new SQLException("No se permite cambiar ni eliminar datos sin una copia verificada.");
         }
     }
-    private void record(Connection connection, long id, String migration, String checksum, String description, String tableName, Path backup) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("INSERT INTO " + quote(SchemaMigrationHistoryTable.NAME) + " (ID,component,schemaVersion,migrationID,checksum,description,tableName,appliedAt,backupFile) VALUES (?,?,?,?,?,?,?,?,?)")) {
+    private void record(Connection connection, long id, String migration, String checksum, String description, String tableName, Path backup, List<String> retired) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("INSERT INTO " + quote(SchemaMigrationHistoryTable.NAME) + " (ID,component,schemaVersion,migrationID,checksum,description,tableName,appliedAt,backupFile,retiredNames) VALUES (?,?,?,?,?,?,?,?,?,?)")) {
             statement.setLong(1, id);
             statement.setString(2, configuration.getSchemaComponent());
             statement.setInt(3, configuration.getSchemaVersion());
@@ -376,6 +400,7 @@ public class SchemaMigrationManager {
             statement.setString(7, tableName);
             statement.setLong(8, System.currentTimeMillis());
             statement.setString(9, backup == null ? "" : backup.toString());
+            statement.setString(10, String.join(",", retired));
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("No se ha confirmado la versión de la migración.");
             }

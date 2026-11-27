@@ -17,6 +17,7 @@ public final class SchemaMigrationHistoryTable extends TableDatabaseMultiKeys {
     private String tableName = "";
     private long appliedAt;
     private String backupFile = "";
+    private String retiredNames = "";
     public SchemaMigrationHistoryTable(long id, Database database) {
         super(NAME, "ID", database);
         this.id = id;
@@ -44,6 +45,7 @@ public final class SchemaMigrationHistoryTable extends TableDatabaseMultiKeys {
         tableName = row.getString("tableName");
         appliedAt = row.getLong("appliedAt");
         backupFile = row.getString("backupFile");
+        retiredNames = row.getString("retiredNames");
     }
     @Override
     public HashMap<String, Object> serialize(HashMap<String, Object> map) {
@@ -55,6 +57,7 @@ public final class SchemaMigrationHistoryTable extends TableDatabaseMultiKeys {
         map.put("tableName", tableName);
         map.put("appliedAt", appliedAt);
         map.put("backupFile", backupFile);
+        map.put("retiredNames", retiredNames);
         return map;
     }
 }

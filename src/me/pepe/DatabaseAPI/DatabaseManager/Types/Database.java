@@ -22,6 +22,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.IdentityHashMap;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -40,6 +42,11 @@ import me.pepe.DatabaseAPI.Utils.MySQLConnection;
 import me.pepe.DatabaseAPI.Utils.SimpleCallbackRequest;
 import me.pepe.DatabaseAPI.Schema.SchemaMigrationHistoryTable;
 import me.pepe.DatabaseAPI.Schema.SchemaMigrationManager;
+import me.pepe.DatabaseAPI.Transaction.TransactionAction;
+import me.pepe.DatabaseAPI.Transaction.TransactionContext;
+import me.pepe.DatabaseAPI.Transaction.TransactionException;
+import me.pepe.DatabaseAPI.Transaction.TransactionResult;
+import me.pepe.DatabaseAPI.Transaction.TransactionWork;
 
 public abstract class Database {
 	private String name;
@@ -69,6 +76,8 @@ public abstract class Database {
 	private MySQLConnection mysqlConnection;
 	private SchemaMigrationManager schemaMigrationManager;
 	private volatile SQLException schemaError;
+	private volatile SQLException transactionError;
+	private final ThreadLocal<ManagedTransaction> managedTransaction = new ThreadLocal<ManagedTransaction>();
 	public Database(String name) {
 		this(name, false, false);
 	}
@@ -174,7 +183,17 @@ public abstract class Database {
 		return temporaly;
 	}
 	public void getConnection(Callback<Connection> callback) {
+		ManagedTransaction active = managedTransaction.get();
+		if (active != null) {
+			SQLException failure = active.rejectLegacyOperation();
+			notifyCallback(callback, null, failure);
+			return;
+		}
 		synchronized (connectionLock) {
+			if (transactionError != null) {
+				notifyCallback(callback, null, transactionError);
+				return;
+			}
 			if (schemaError != null) {
 				notifyCallback(callback, null, schemaError);
 				return;
@@ -509,7 +528,8 @@ public abstract class Database {
 	 */
 	public void registerTable(DatabaseAPI instance, Class<? extends DatabaseTable> tableClass, DatabaseTableInstance tableInstance, boolean saveDatabase) {
 		DatabaseTable table = tableInstance.newInstance(null);
-		final boolean managedSchema = instance.getConfiguration().isSchemaMigrationsEnabled() && tableClass != SchemaMigrationHistoryTable.class;
+		final boolean migrationsEnabled = instance != null && instance.getConfiguration() != null && instance.getConfiguration().isSchemaMigrationsEnabled();
+		final boolean managedSchema = migrationsEnabled && tableClass != SchemaMigrationHistoryTable.class;
 		if (tableInstances.containsKey(tableClass)) {
 			System.err.println("[Database]: &cLa tabla " + table.getTableName() + " ya estaba registrada...");
 		} else {
@@ -535,7 +555,7 @@ public abstract class Database {
 					if (exception != null) {
 						tableInstance.registerError("Error de conexión al registrar la tabla");
 						tableInstances.put(tableClass, tableInstance);
-						if (instance.getConfiguration().isSchemaMigrationsEnabled()) {
+						if (migrationsEnabled) {
 							schemaError = new SQLException("No se ha confirmado la preparación del esquema.", exception);
 						}
 						return;
@@ -612,7 +632,7 @@ public abstract class Database {
 					} catch(SQLException | RuntimeException ex) {
 						tableInstance.registerError("No se ha confirmado el registro/actualización: " + ex.getMessage());
 						tableInstances.put(tableClass, tableInstance);
-						if (instance.getConfiguration().isSchemaMigrationsEnabled()) {
+						if (migrationsEnabled) {
 							schemaError = ex instanceof SQLException ? (SQLException) ex : new SQLException("Fallo durante la preparación del esquema.", ex);
 						}
 						ex.printStackTrace();
@@ -622,7 +642,7 @@ public abstract class Database {
 		}
 	}
 	public boolean hasError() {
-		if (schemaError != null) {
+		if (schemaError != null || transactionError != null) {
 			return true;
 		}
 		for (DatabaseTableInstance tableInstance : tableInstances.values()) {
@@ -634,6 +654,11 @@ public abstract class Database {
 	}
 	public HashMap<String, List<String>> getErrors() {
 		HashMap<String, List<String>> errors = new HashMap<String, List<String>>();
+		if (transactionError != null) {
+			List<String> failures = new ArrayList<String>();
+			failures.add(transactionError.getMessage());
+			errors.put("DatabaseTransaction", failures);
+		}
 		if (schemaError != null) {
 			List<String> failures = new ArrayList<String>();
 			failures.add(schemaError.getMessage());
@@ -990,6 +1015,11 @@ public abstract class Database {
 		Exception error;
 	}
 	private <T> void execute(boolean async, final SqlOperation<T> operation, final Callback<T> callback) {
+		ManagedTransaction active = managedTransaction.get();
+		if (active != null) {
+			notifyCallback(callback, null, active.rejectLegacyOperation());
+			return;
+		}
 		Runnable task = new Runnable() {
 			@Override
 			public void run() {
@@ -1045,6 +1075,338 @@ public abstract class Database {
 			task.run();
 		} else {
 			notifyCallback(callback, null, rejection);
+		}
+	}
+	/** Ejecuta una sola vez; nunca reintenta el trabajo ni participa en una transacción JDBC ajena. */
+	public <T> TransactionResult<T> transaction(TransactionWork<T> work) throws TransactionException {
+		final SqlResult<TransactionResult<T>> result = new SqlResult<TransactionResult<T>>();
+		transaction(false, work, new Callback<TransactionResult<T>>() {
+			@Override
+			public void done(TransactionResult<T> value, Exception failure) {
+				result.value = value;
+				result.error = failure;
+			}
+		});
+		if (result.error != null) {
+			throw (TransactionException) result.error;
+		}
+		return result.value;
+	}
+	public <T> void transaction(boolean async, final TransactionWork<T> work, final Callback<TransactionResult<T>> callback) {
+		if (callback == null) {
+			throw new IllegalArgumentException("La transacción requiere un callback de confirmación");
+		}
+		execute(async, new SqlOperation<CommittedWork<T>>() {
+			@Override
+			public CommittedWork<T> run(Connection connection) throws Exception {
+				return runTransaction(connection, work);
+			}
+		}, new Callback<CommittedWork<T>>() {
+			@Override
+			public void done(CommittedWork<T> committed, Exception failure) {
+				if (failure != null) {
+					TransactionException error = failure instanceof TransactionException ? (TransactionException) failure : new TransactionException("No se pudo iniciar la transacción", TransactionException.Outcome.NOT_STARTED, failure);
+					notifyCallback(callback, null, error);
+					return;
+				}
+				committed.transaction.publish(committed.warnings);
+				notifyCallback(callback, new TransactionResult<T>(committed.value, committed.warnings), null);
+			}
+		});
+	}
+	private <T> CommittedWork<T> runTransaction(Connection connection, TransactionWork<T> work) throws Exception {
+		if (work == null || !connection.getAutoCommit()) {
+			throw new TransactionException("Se requiere trabajo y una conexión sin transacción externa", TransactionException.Outcome.NOT_STARTED, null);
+		}
+		ManagedTransaction transaction = new ManagedTransaction(connection);
+		boolean started = false;
+		boolean commitAttempted = false;
+		boolean committed = false;
+		boolean rolledBack = false;
+		TransactionException failed = null;
+		List<Exception> warnings = new ArrayList<Exception>();
+		try {
+			connection.setAutoCommit(false);
+			started = true;
+			managedTransaction.set(transaction);
+			T value = work.execute(transaction);
+			transaction.checkReadyToCommit();
+			commitAttempted = true;
+			connection.commit();
+			committed = true;
+			return new CommittedWork<T>(value, transaction, warnings);
+		} catch (Throwable failure) {
+			if (started) {
+				try {
+					connection.rollback();
+					rolledBack = true;
+				} catch (SQLException rollbackFailure) {
+					failure.addSuppressed(rollbackFailure);
+				}
+			}
+			TransactionException.Outcome outcome = started && rolledBack && !commitAttempted ? TransactionException.Outcome.ROLLED_BACK : TransactionException.Outcome.UNKNOWN;
+			if (outcome == TransactionException.Outcome.UNKNOWN) {
+				transactionError = new SQLException("Resultado transaccional incierto: bloquear y conciliar antes de reabrir la base", failure);
+			}
+			if (failure instanceof Error) {
+				throw (Error) failure;
+			}
+			failed = new TransactionException("No se confirmó la transacción: " + outcome, outcome, failure);
+			throw failed;
+		} finally {
+			managedTransaction.remove();
+			transaction.active = false;
+			transaction.finish(committed, rolledBack && !commitAttempted, warnings);
+			// No activar autocommit si el commit o el rollback dejaron un resultado incierto.
+			if (committed || rolledBack && !commitAttempted) {
+				try {
+					connection.setAutoCommit(true);
+				} catch (SQLException resetFailure) {
+					transactionError = new SQLException("No se pudo restaurar la conexión después de la transacción", resetFailure);
+					warnings.add(resetFailure);
+				}
+			}
+			if (failed != null) {
+				for (Exception warning : warnings) {
+					failed.addSuppressed(warning);
+				}
+			}
+		}
+	}
+	private final class CommittedWork<T> {
+		private final T value;
+		private final ManagedTransaction transaction;
+		private final List<Exception> warnings;
+		private CommittedWork(T value, ManagedTransaction transaction, List<Exception> warnings) {
+			this.value = value;
+			this.transaction = transaction;
+			this.warnings = warnings;
+		}
+	}
+	private final class PendingWrite {
+		private final DatabaseTable table;
+		private final Object originalKey;
+		private HashMap<String, Object> data;
+		private Object writtenKey;
+		private boolean written;
+		private PendingWrite(DatabaseTable table) {
+			this.table = table;
+			this.originalKey = table.keySerialize();
+		}
+	}
+	private final class ManagedTransaction implements TransactionContext {
+		private final Connection connection;
+		private final Thread owner = Thread.currentThread();
+		private final IdentityHashMap<DatabaseTable, PendingWrite> writes = new IdentityHashMap<DatabaseTable, PendingWrite>();
+		private final List<PendingWrite> writeOrder = new ArrayList<PendingWrite>();
+		private final List<DatabaseTable> loaded = new ArrayList<DatabaseTable>();
+		private final List<TransactionAction> actions = new ArrayList<TransactionAction>();
+		private boolean active = true;
+		private volatile SQLException rollbackOnly;
+		private ManagedTransaction(Connection connection) {
+			this.connection = connection;
+		}
+		private SQLException rejectLegacyOperation() {
+			SQLException failure = new SQLException("Usa el contexto transaccional; no mezcles operaciones heredadas ni transacciones anidadas");
+			rollbackOnly = failure;
+			return failure;
+		}
+		private void checkActive() throws SQLException {
+			if (!active || Thread.currentThread() != owner) {
+				SQLException failure = new SQLException("El contexto transaccional ha terminado o se usa desde otro hilo");
+				rollbackOnly = failure;
+				throw failure;
+			}
+			if (rollbackOnly != null) {
+				throw rollbackOnly;
+			}
+		}
+		@Override
+		public <T extends DatabaseTable> T create(Class<T> type, Object key) throws SQLException {
+			checkActive();
+			try {
+				Object factoryKey = TableDatabaseMultiKeys.class.isAssignableFrom(type) && key instanceof Number ? Long.valueOf(new BigDecimal(key.toString()).longValueExact()) : key;
+				T table = type.cast(newTable(type, factoryKey));
+				if (table instanceof TableDatabaseMultiKeys) {
+					((TableDatabaseMultiKeys) table).buildKey(((Number) key).longValue());
+				}
+				table.setLoaded();
+				table.setHasData(false);
+				return table;
+			} catch (Exception failure) {
+				rollbackOnly = new SQLException("No se pudo crear la instancia transaccional", failure);
+				throw rollbackOnly;
+			}
+		}
+		@Override
+		public <T extends DatabaseTable> T find(Class<T> type, Object key) throws SQLException {
+			checkActive();
+			try {
+				T table = create(type, key);
+				Object canonicalKey = table.keySerialize();
+				for (PendingWrite pending : writeOrder) {
+					if (pending.written && type.isInstance(pending.table) && Objects.equals(pending.table.keySerialize(), canonicalKey)) {
+						return type.cast(pending.table);
+					}
+				}
+				for (DatabaseTable cached : loaded) {
+					if (type.isInstance(cached) && Objects.equals(cached.keySerialize(), canonicalKey)) {
+						return type.cast(cached);
+					}
+				}
+				HashMap<String, Object> filters = new HashMap<String, Object>();
+				filters.put(table.getKeyName(), canonicalKey);
+				try (PreparedStatement statement = prepareStatement("*", table, filters, connection, 1, 0, ""); ResultSet result = statement.executeQuery()) {
+					if (!result.next()) {
+						return null;
+					}
+					if (table instanceof TableDatabaseMultiKeys) {
+						((TableDatabaseMultiKeys) table).load(result, false);
+					} else {
+						table.deserialize(result);
+						table.setHasData(true);
+						table.reloadLastSave(false);
+					}
+				}
+				loaded.add(table);
+				return table;
+			} catch (Exception failure) {
+				rollbackOnly = new SQLException("No se pudo leer el registro transaccional", failure);
+				throw rollbackOnly;
+			}
+		}
+		@Override
+		public void save(DatabaseTable table) throws SQLException {
+			write(table, false, false);
+		}
+		@Override
+		public void insert(DatabaseTable table) throws SQLException {
+			write(table, true, false);
+		}
+		@Override
+		public boolean insertIfAbsent(DatabaseTable table) throws SQLException {
+			return write(table, true, true);
+		}
+		private boolean write(DatabaseTable table, boolean insertOnly, boolean ifAbsent) throws SQLException {
+			checkActive();
+			try {
+				if (table == null || table.getDatabase() != Database.this || !table.isLoaded() || !hasTable(table.getClass()) || !table.hasPrimaryKey()) {
+					throw new SQLException("La tabla cargada debe pertenecer a esta base y tener clave primaria");
+				}
+				if (!DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) || noSaveTable.contains(table.getTableName())) {
+					throw new SQLException("El guardado está deshabilitado para esta tabla");
+				}
+				for (PendingWrite other : writeOrder) {
+					if (other.table != table && other.table.getTableName().equals(table.getTableName()) && Objects.equals(other.table.keySerialize(), table.keySerialize()) && !(table.isAutoIncrement() && Long.valueOf(0).equals(table.keySerialize()))) {
+						if (ifAbsent && other.written) {
+							return false;
+						}
+						throw new SQLException("Usa una sola instancia por registro dentro de la transacción");
+					}
+				}
+				PendingWrite pending = writes.get(table);
+				if (pending == null) {
+					synchronized (table) {
+						if (table.isSaving()) {
+							throw new SQLException("La tabla ya tiene un guardado en curso");
+						}
+						pending = new PendingWrite(table);
+						writes.put(table, pending);
+						writeOrder.add(pending);
+						table.setSaving(true);
+					}
+				} else if (!Objects.equals(pending.written ? pending.writtenKey : pending.originalKey, table.keySerialize())) {
+					throw new SQLException("No se puede cambiar la clave de un registro durante la transacción");
+				}
+				boolean generated = table instanceof TableDatabaseMultiKeys && table.isAutoIncrement() && Long.valueOf(0).equals(table.keySerialize());
+				boolean exists = !generated && rowExists(connection, table);
+				if (insertOnly && exists) {
+					if (ifAbsent) {
+						return false;
+					}
+					throw new SQLException("El registro ya existe: la inserción no sobrescribe datos");
+				}
+				if (!insertOnly && table.hasData() && !exists) {
+					throw new SQLException("No se puede actualizar un registro que ya no existe");
+				}
+				HashMap<String, Object> data = new HashMap<String, Object>(table.serialize(new HashMap<String, Object>()));
+				try (PreparedStatement statement = exists ? update(connection, table, data) : Database.this.insert(connection, table, data, generated)) {
+					int affected = statement.executeUpdate();
+					if (affected != 1 && !(exists && affected == 0 && rowExists(connection, table))) {
+						throw new SQLException("No se confirmó la escritura del registro");
+					}
+					if (generated) {
+						try (ResultSet keys = statement.getGeneratedKeys()) {
+							if (!keys.next() || keys.getLong(1) == 0) {
+								throw new SQLException("No se pudo obtener la clave del registro");
+							}
+							((TableDatabaseMultiKeys) table).buildKey(keys.getLong(1));
+						}
+					}
+				}
+				pending.data = data;
+				pending.writtenKey = table.keySerialize();
+				pending.written = true;
+				return true;
+			} catch (Exception failure) {
+				rollbackOnly = new SQLException("No se pudo guardar el registro transaccional", failure);
+				throw rollbackOnly;
+			}
+		}
+		@Override
+		public void afterCommit(TransactionAction action) throws SQLException {
+			checkActive();
+			if (action == null) {
+				rollbackOnly = new SQLException("La acción posterior al commit es obligatoria");
+				throw rollbackOnly;
+			}
+			actions.add(action);
+		}
+		private void checkReadyToCommit() throws SQLException {
+			checkActive();
+			for (PendingWrite pending : writeOrder) {
+				if (pending.written && (!Objects.equals(pending.writtenKey, pending.table.keySerialize()) || !pending.data.equals(pending.table.serialize(new HashMap<String, Object>())))) {
+					throw new SQLException("Hay cambios posteriores al último guardado de la transacción");
+				}
+			}
+		}
+		private void finish(boolean committed, boolean rolledBack, List<Exception> warnings) {
+			for (PendingWrite pending : writeOrder) {
+				try {
+					if (committed && pending.written) {
+						pending.table.setHasData(true);
+						pending.table.reloadLastSave(pending.data, false);
+					} else if (rolledBack && pending.table instanceof TableDatabaseMultiKeys) {
+						((TableDatabaseMultiKeys) pending.table).buildKey(((Number) pending.originalKey).longValue());
+					} else if (!committed && !rolledBack) {
+						pending.table.invalidatePersistence();
+					}
+				} catch (RuntimeException failure) {
+					pending.table.invalidatePersistence();
+					transactionError = new SQLException("No se pudo reconciliar el estado del objeto transaccional", failure);
+					warnings.add(failure);
+				} finally {
+					pending.table.setSaving(false);
+				}
+			}
+		}
+		private void publish(List<Exception> warnings) {
+			for (PendingWrite pending : writeOrder) {
+				if (pending.written && pending.table.isLoaded()) {
+					try {
+						pending.table.onSave();
+					} catch (Exception failure) {
+						warnings.add(failure);
+					}
+				}
+			}
+			for (TransactionAction action : actions) {
+				try {
+					action.execute();
+				} catch (Exception failure) {
+					warnings.add(failure);
+				}
+			}
 		}
 	}
 	public void closeConnection() throws SQLException {
