@@ -47,6 +47,9 @@ import me.pepe.DatabaseAPI.Transaction.TransactionContext;
 import me.pepe.DatabaseAPI.Transaction.TransactionException;
 import me.pepe.DatabaseAPI.Transaction.TransactionResult;
 import me.pepe.DatabaseAPI.Transaction.TransactionWork;
+import me.pepe.DatabaseAPI.Transaction.SqlWork;
+import me.pepe.DatabaseAPI.Transaction.ScopedSqlConnection;
+import me.pepe.DatabaseAPI.Transaction.TransactionWarningHandler;
 
 public abstract class Database {
 	private String name;
@@ -1077,7 +1080,35 @@ public abstract class Database {
 			notifyCallback(callback, null, rejection);
 		}
 	}
-	/** Ejecuta una sola vez; nunca reintenta el trabajo ni participa en una transacción JDBC ajena. */
+	/** Devuelve el contexto gestionado del hilo actual, o null fuera de una transacción. */
+	public TransactionContext currentTransaction() {
+		return managedTransaction.get();
+	}
+	/** Reutiliza explícitamente el ámbito SQL actual o confirma uno propio antes de devolver el valor. */
+	public <T> T withSql(final SqlWork<T> work, TransactionWarningHandler warnings) throws Exception {
+		if (warnings == null || work == null) {
+			throw new IllegalArgumentException("Trabajo y tratamiento de avisos obligatorios");
+		}
+		ManagedTransaction current = managedTransaction.get();
+		if (current != null) {
+			return current.sql(work);
+		}
+		TransactionResult<T> result = transaction(new TransactionWork<T>() {
+			@Override
+			public T execute(TransactionContext transaction) throws Exception {
+				return transaction.sql(work);
+			}
+		});
+		for (Exception warning : result.getPostCommitFailures()) {
+			try {
+				warnings.handle(warning);
+			} catch (RuntimeException reportingFailure) {
+				// La escritura está confirmada aunque falle su diagnóstico; no convertirla en reintentable.
+				reportingFailure.printStackTrace();
+			}
+		}
+		return result.getValue();
+	}
 	public <T> TransactionResult<T> transaction(TransactionWork<T> work) throws TransactionException {
 		final SqlResult<TransactionResult<T>> result = new SqlResult<TransactionResult<T>>();
 		transaction(false, work, new Callback<TransactionResult<T>>() {
@@ -1183,12 +1214,27 @@ public abstract class Database {
 			this.warnings = warnings;
 		}
 	}
+	private boolean isRegisteredModel(DatabaseTable table) {
+		if (tableInstances.containsKey(table.getClass())) {
+			return true;
+		}
+		for (Map.Entry<Class<? extends DatabaseTable>, DatabaseTableInstance> entry : tableInstances.entrySet()) {
+			if (entry.getKey().isInstance(table)) {
+				DatabaseTable model = entry.getValue().newInstance(null);
+				if (Objects.equals(model.getTableName(), table.getTableName()) && Objects.equals(model.getKeyName(), table.getKeyName()) && model.getKeyType() == table.getKeyType()) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 	private final class PendingWrite {
 		private final DatabaseTable table;
 		private final Object originalKey;
 		private HashMap<String, Object> data;
 		private Object writtenKey;
 		private boolean written;
+		private boolean notifySave;
 		private PendingWrite(DatabaseTable table) {
 			this.table = table;
 			this.originalKey = table.keySerialize();
@@ -1277,20 +1323,24 @@ public abstract class Database {
 		}
 		@Override
 		public void save(DatabaseTable table) throws SQLException {
-			write(table, false, false);
+			save(table, false);
+		}
+		@Override
+		public void save(DatabaseTable table, boolean ignoreOnSave) throws SQLException {
+			write(table, false, false, ignoreOnSave);
 		}
 		@Override
 		public void insert(DatabaseTable table) throws SQLException {
-			write(table, true, false);
+			write(table, true, false, false);
 		}
 		@Override
 		public boolean insertIfAbsent(DatabaseTable table) throws SQLException {
-			return write(table, true, true);
+			return write(table, true, true, false);
 		}
-		private boolean write(DatabaseTable table, boolean insertOnly, boolean ifAbsent) throws SQLException {
+		private boolean write(DatabaseTable table, boolean insertOnly, boolean ifAbsent, boolean ignoreOnSave) throws SQLException {
 			checkActive();
 			try {
-				if (table == null || table.getDatabase() != Database.this || !table.isLoaded() || !hasTable(table.getClass()) || !table.hasPrimaryKey()) {
+				if (table == null || table.getDatabase() != Database.this || !table.isLoaded() || !isRegisteredModel(table) || !table.hasPrimaryKey()) {
 					throw new SQLException("La tabla cargada debe pertenecer a esta base y tener clave primaria");
 				}
 				if (!DatabaseAPI.getInstance().getDatabaseManager().saveable(getDatabaseName()) || noSaveTable.contains(table.getTableName())) {
@@ -1347,10 +1397,72 @@ public abstract class Database {
 				pending.data = data;
 				pending.writtenKey = table.keySerialize();
 				pending.written = true;
+				pending.notifySave = pending.notifySave || !ignoreOnSave;
 				return true;
 			} catch (Exception failure) {
 				rollbackOnly = new SQLException("No se pudo guardar el registro transaccional", failure);
 				throw rollbackOnly;
+			}
+		}
+		@Override
+		public <T extends DatabaseTable> List<T> findAll(Class<T> type, HashMap<String, Object> filters, int limit, int offset, String orderBy) throws SQLException {
+			checkActive();
+			try {
+				DatabaseTable prototype = newTable(type, null);
+				List<T> values = new ArrayList<T>();
+				try (PreparedStatement query = prepareStatement("*", prototype, copyKeys(filters), connection, limit, offset, orderBy); ResultSet rows = query.executeQuery()) {
+					while (rows.next()) {
+						Object key = prototype instanceof TableDatabaseMultiKeys ? Long.valueOf(rows.getLong(prototype.getKeyName())) : rows.getObject(prototype.getKeyName());
+						T table = create(type, key);
+						if (table instanceof TableDatabaseMultiKeys) {
+							((TableDatabaseMultiKeys) table).load(rows, false);
+						} else {
+							table.deserialize(rows);
+							table.setHasData(true);
+							table.reloadLastSave(false);
+						}
+						T existing = null;
+						for (DatabaseTable cached : loaded) {
+							if (type.isInstance(cached) && Objects.equals(cached.keySerialize(), key)) {
+								existing = type.cast(cached);
+								break;
+							}
+						}
+						for (PendingWrite pending : writeOrder) {
+							if (pending.written && type.isInstance(pending.table) && Objects.equals(pending.table.keySerialize(), key)) {
+								existing = type.cast(pending.table);
+								break;
+							}
+						}
+						if (existing == null) {
+							loaded.add(table);
+						}
+						values.add(existing == null ? table : existing);
+					}
+				}
+				return values;
+			} catch (Exception failure) {
+				rollbackOnly = new SQLException("No se pudo consultar la selección transaccional", failure);
+				throw rollbackOnly;
+			}
+		}
+		@Override
+		public <T> T sql(SqlWork<T> work) throws Exception {
+			checkActive();
+			try (ScopedSqlConnection access = new ScopedSqlConnection(connection, new ScopedSqlConnection.Guard() {
+				@Override
+				public void check() throws SQLException {
+					checkActive();
+				}
+				@Override
+				public void failed(SQLException failure) {
+					rollbackOnly = failure;
+				}
+			})) {
+				return work.execute(access.getFacade());
+			} catch (Exception failure) {
+				rollbackOnly = new SQLException("Falló el trabajo SQL de la transacción", failure);
+				throw failure;
 			}
 		}
 		@Override
@@ -1392,7 +1504,7 @@ public abstract class Database {
 		}
 		private void publish(List<Exception> warnings) {
 			for (PendingWrite pending : writeOrder) {
-				if (pending.written && pending.table.isLoaded()) {
+				if (pending.written && pending.notifySave && pending.table.isLoaded()) {
 					try {
 						pending.table.onSave();
 					} catch (Exception failure) {
